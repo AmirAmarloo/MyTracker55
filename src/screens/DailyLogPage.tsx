@@ -1,0 +1,396 @@
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useTimeStore } from '../state/useTimeStore';
+import { useProfileStore } from '../state/useProfileStore';
+import { useProjectStore } from '../state/useProjectStore';
+import { formatDurationHHMM } from '../helpers/timeFormatter';
+import { LayoutAnimation, Platform, UIManager } from 'react-native';
+import { TimeEntry } from '../state/useTimeStore';
+
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
+export default function DailyLogPage() {
+  const entries = useTimeStore((state) => state.entries) || [];
+  const { userName, clientName, resetProfile } = useProfileStore();
+  const { clearAllEntries } = useTimeStore(); 
+  const [selectedDate, setSelectedDate] = useState(new Date());
+
+  
+  const now = new Date();
+
+  // ۱. محاسبه مجموع هفته جاری 
+  const startOfWeek = new Date(now);
+  startOfWeek.setDate(now.getDate() - (now.getDay() === 0 ? 6 : now.getDay() - 1));
+  startOfWeek.setHours(0, 0, 0, 0);
+
+  const weeklyMinutes = entries
+    .filter(e => new Date(e.startTime) >= startOfWeek)
+    .reduce((sum, e) => sum + (e.duration || 0), 0);
+
+  // ۲. محاسبه مجموع ماه جاری
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const monthlyMinutes = entries
+    .filter(e => new Date(e.startTime) >= startOfMonth)
+    .reduce((sum, e) => sum + (e.duration || 0), 0);
+
+
+  const filteredEntries = entries.filter(entry => {
+    const entryDate = new Date(entry.startTime).toDateString();
+    const targetDate = selectedDate.toDateString();
+    return entryDate === targetDate;
+  });
+  const [showDetails, setShowDetails] = useState(false);
+  const totalMinutes = filteredEntries.reduce((sum, item: any) => sum + (Number(item.duration) || 0), 0);
+  const totalHours = Math.floor(totalMinutes / 60);
+  const remainingMins = totalMinutes % 60;
+  const projectSummary = filteredEntries.reduce((acc: { [key: string]: number }, entry: TimeEntry) => {
+    // استفاده از projectName به عنوان کلید برای لیست پروژه‌ها
+    const name = entry.projectName || 'Unknown Project';
+    acc[name] = (acc[name] || 0) + (entry.duration || 0);
+    return acc;
+  }, {});
+
+  const totalDayMinutes = filteredEntries.reduce((sum, entry) => sum + (entry.duration || 0), 0);
+
+  const handleLogoutPress = () => {
+    Alert.alert(
+      "Logout", 
+      "Are you sure? All data for this user will be cleared.", 
+      [
+        { text: "Cancel", style: "cancel" },
+        { 
+          text: "Yes, Reset", 
+          style: "destructive", 
+          onPress: async () => {
+            await Promise.all([
+              useProfileStore.persist.clearStorage(),
+              useTimeStore.persist.clearStorage(),
+              useProjectStore.persist.clearStorage()
+            ]);
+            useProfileStore.getState().resetProfile();
+            useTimeStore.setState({ entries: [], activeEntry: null });
+            useProjectStore.getState().clearSelection();
+          } 
+        }
+      ]
+    );
+  };
+
+
+  const groupedByCompany = filteredEntries.reduce((acc: any, entry: TimeEntry) => {
+    const client = entry.clientName || 'General';
+    const project = entry.projectName || 'Unknown';
+
+    if (!acc[client]) acc[client] = {};
+    
+    acc[client][project] = (acc[client][project] || 0) + (entry.duration || 0);
+    
+    return acc;
+  }, {});
+
+  return (
+    <SafeAreaView style={styles.container}>
+      <View style={{ flex: 1, backgroundColor: '#f5f5f5' }}>
+        
+        {/* هدر تاریخ - ثابت */}
+        <View style={styles.dateHeader}>
+          <TouchableOpacity onPress={() => {
+            const prev = new Date(selectedDate);
+            prev.setDate(prev.getDate() - 1);
+            setSelectedDate(prev);
+          }}>
+            <Text style={styles.arrow}>◀</Text>
+          </TouchableOpacity>
+
+          <Text style={styles.dateTitle}>
+            {selectedDate.toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit' })}
+          </Text>
+
+          <TouchableOpacity onPress={() => {
+            const next = new Date(selectedDate);
+            next.setDate(next.getDate() + 1);
+            setSelectedDate(next);
+          }}>
+            <Text style={styles.arrow}>▶</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* بخش خلاصه - ثابت */}
+        <View style={styles.summaryContainer}>
+          <Text style={styles.summaryTitle}>Daily Summary</Text>
+
+          {Object.entries(groupedByCompany).map(([company, projects]: [string, any]) => (
+              <View key={company} style={{ marginBottom: 10 }}>
+                <Text style={styles.companySubHeader}>🏢 {company}</Text>
+                
+                {/* رندر پروژه‌های تجمیع شده در این شرکت */}
+                {Object.entries(projects).map(([projectName, duration]: [string, any]) => (
+                  <View key={projectName} style={styles.summaryRow}>
+                    <Text style={styles.summaryProjectName}>{projectName}</Text>
+                    <Text style={styles.summaryProjectTime}>{formatDurationHHMM(duration)}</Text>
+                  </View>
+                ))}
+              </View>
+            ))}
+          <View style={styles.totalDivider} />
+          
+          <View style={styles.totalRow}>
+            <Text style={styles.totalLabel}>Today:</Text>
+            <Text style={styles.totalValue}>{formatDurationHHMM(totalDayMinutes)}</Text>
+          </View>
+
+          {/* بخش هفته و ماه بدون تغییر باقی می‌ماند */}
+          <View style={styles.statsRow}>
+            <View style={styles.statBox}>
+              <Text style={styles.statLabel}>This Week</Text>
+              <Text style={styles.statValue}>{formatDurationHHMM(weeklyMinutes)}</Text>
+            </View>
+            <View style={styles.statBox}>
+              <Text style={styles.statLabel}>This Month</Text>
+              <Text style={styles.statValue}>{formatDurationHHMM(monthlyMinutes)}</Text>
+            </View>
+          </View>
+
+          <TouchableOpacity 
+            style={styles.detailsToggleButton} 
+            onPress={() => {
+              LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+              setShowDetails(!showDetails);
+            }}
+          >
+            <Text style={styles.toggleButtonText}>
+              {showDetails ? "▲ Hide Details" : "▼ Show Detailed Logs"}
+            </Text>
+          </TouchableOpacity>
+        </View>
+        {/* لیست جزئیات - بخش اسکرول شونده */}
+        <View style={{ flex: 1 }}> 
+          {showDetails ? (
+            <FlatList
+              data={filteredEntries}
+              keyExtractor={(item) => item.id}
+              renderItem={({ item }) => (
+                <View style={styles.entryRow}>
+                  <View style={{ flex: 1 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+                      <View style={[styles.projectTag, { maxWidth: 250 }]}>
+                        <Text style={styles.projectTagText} numberOfLines={1} ellipsizeMode="tail">
+                          {item.clientName || "No Client"}
+                        </Text>
+                      </View>
+                      <Text style={styles.projectNameText} numberOfLines={1}>
+                        {item.projectName}
+                      </Text>
+                    </View>
+                    <Text style={styles.dateText}>
+                      {new Date(item.startTime).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })} 
+                      {' - '}
+                      {item.endTime ? new Date(item.endTime).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) : '--:--'}
+                    </Text>
+                  </View>
+                  <Text style={styles.durationText}>{formatDurationHHMM(item.duration)}</Text>
+                </View>
+              )}
+              ListEmptyComponent={
+                <Text style={styles.emptyText}>Keine Einträge.</Text>
+              }
+              // اضافه کردن دکمه لاگ اوت به انتهای لیست برای جلوگیری از شلوغی
+              ListFooterComponent={
+                <TouchableOpacity 
+                  style={[styles.logoutBtn, { marginTop: 30, marginBottom: 50 }]}
+                  onPress={handleLogoutPress} // تابع لاگ‌اوت را جداگانه تعریف کنید
+                >
+                  <Text style={styles.logoutText}>Reset Profile (Logout)</Text>
+                </TouchableOpacity>
+              }
+              contentContainerStyle={{ paddingHorizontal: 15 }} 
+            />
+          ) : (
+            /* اگر لیست بسته بود، دکمه لاگ اوت را اینجا نشان بده */
+            <View style={{ padding: 20 }}>
+              <TouchableOpacity 
+                  style={styles.logoutBtn}
+                  onPress={handleLogoutPress}
+                >
+                  <Text style={styles.logoutText}>Reset Profile (Logout)</Text>
+                </TouchableOpacity>
+            </View>
+          )}
+        </View>
+      </View>
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#fff',
+    paddingTop: 0, 
+  },
+  dateHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: 10,
+    paddingBottom: 15,
+    paddingVertical: 20, 
+    paddingHorizontal: 20,
+    backgroundColor: '#fff',
+    borderBottomWidth: 0,
+    borderBottomColor: '#eee',
+    marginTop: 0,
+    elevation: 0,
+    zIndex: 10,
+  },
+  profileHeader: {
+    paddingVertical: 10,
+    backgroundColor: '#f1f3f5',
+    borderBottomWidth: 1,
+    borderBottomColor: '#dee2e6',
+    alignItems: 'center',
+  },
+  profileText: { fontSize: 13, color: '#495057', fontWeight: '600' },
+  header: { padding: 20 },
+  title: { fontSize: 28, fontWeight: 'bold', color: '#212529' },
+  entryRow: { 
+    padding: 15, 
+    borderBottomWidth: 1, 
+    borderColor: '#f1f3f5', 
+    flexDirection: 'row', 
+    justifyContent: 'space-between',
+    alignItems: 'center'
+  },
+  logoutBtn: {
+    backgroundColor: '#ff3b30', // قرمز استاندارد iOS
+    padding: 15,
+    margin: 20,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  logoutText: {
+    color: 'white',
+    fontWeight: 'bold',
+    fontSize: 16
+  },  
+
+  summaryBox: {
+    backgroundColor: '#007AFF',
+    margin: 20,
+    padding: 20,
+    borderRadius: 15,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    // ایجاد سایه برای شکیل شدن (مخصوص iOS)
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+  },
+  summaryValue: {
+    color: '#fff',
+    fontSize: 22,
+    fontWeight: 'bold',
+  },  
+  projectName: { fontSize: 16, fontWeight: 'bold', color: '#333', marginBottom: 4, },
+  dateText: { fontSize: 12, color: '#adb5bd', marginTop: 4 },
+  durationText: { fontSize: 18, fontWeight: 'bold', color: '#007AFF' },
+  emptyText: { textAlign: 'center', marginTop: 50, color: '#999' },
+  projectTag: {
+      backgroundColor: '#007AFF', // آبی استاندارد iOS
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      borderRadius: 6,
+      alignSelf: 'flex-start', // باعث می‌شود باکس فقط به اندازه متن کش بیاید
+      marginBottom: 6,
+    },
+  projectTagText: {
+    color: '#FFFFFF', // متن حتماً سفید باشد که روی آبی دیده شود
+    fontSize: 11,
+    fontWeight: 'bold',
+    textTransform: 'uppercase', // برای ظاهر حرفه‌ای‌تر
+  },
+  projectNameText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#444',      // رنگ خاکستری تیره برای خوانایی بهتر
+    marginLeft: 10,     // ایجاد فاصله از تگ آبی کد پروژه
+    flex: 1,            // باعث می‌شود اگر متن طولانی بود، در فضای باقی‌مانده بشکند
+  },
+  summaryContainer: {
+    backgroundColor: '#f8f9fa',
+    margin: 15,
+    padding: 15,
+    marginTop: 0,
+    borderRadius: 12,
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: '#eee',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+  },
+  summaryTitle: { fontSize: 16, fontWeight: 'bold', color: '#666', marginBottom: 15 },
+  summaryRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
+  summaryProjectTime: { fontWeight: '600', color: '#333' },
+  
+  totalDivider: { height: 1, backgroundColor: '#eee', marginVertical: 12 },
+  totalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  totalLabel: { fontSize: 16, fontWeight: 'bold', color: '#2c3e50' },
+  totalValue: { fontSize: 18, fontWeight: 'bold', color: '#007AFF' },
+
+  detailsToggleButton: {
+    marginTop: 15,
+    paddingVertical: 10,
+    backgroundColor: '#f8f9fa',
+    borderRadius: 8,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#eee',
+  },
+  statsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 15,
+    paddingTop: 15,
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
+  },
+  statBox: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  statLabel: {
+    fontSize: 11,
+    color: '#888',
+    textTransform: 'uppercase',
+    marginBottom: 5,
+  },
+  statValue: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#444',
+  },
+  companySubHeader: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#007AFF',
+    backgroundColor: '#f0f7ff',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+    alignSelf: 'flex-start',
+    marginBottom: 5,
+    marginTop: 5,
+  },
+  toggleButtonText: { color: '#007AFF', fontWeight: 'bold', fontSize: 13 },
+  summaryItem: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 5 },
+  summaryProjectName: { fontWeight: '600', color: '#333' },
+  summaryDuration: { color: '#007AFF', fontWeight: 'bold' },  
+  dateTitle: { fontSize: 17, fontWeight: '600', color: '#1a1a1a', letterSpacing: 0.5,},
+  arrow: { fontSize: 22, color: '#007AFF', paddingHorizontal: 15 }  
+});

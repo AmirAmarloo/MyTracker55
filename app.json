@@ -9,10 +9,22 @@
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#ffffff"     
     },
+    "plugins": [
+          [
+            "expo-camera",
+            {
+              "cameraPermission": "MyTracker55 needs access to your camera to scan the activation QR code."
+            }
+          ]
+        ],    
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.amirhooshang.MyTracker55",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -20,10 +32,16 @@
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
-      }
+      },
+      "package": "com.amirhooshang.MyTracker55"
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "7fd93f61-c6d9-4b0b-973a-2bd6f2a3c6dc"
+      }
     }
   }
 }
