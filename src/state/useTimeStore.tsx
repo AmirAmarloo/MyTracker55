@@ -12,8 +12,8 @@ export interface TimeEntry {
   clientName: string;
   startTime: number;
   endTime?: number | null;
-  duration?: number; // Minutes (Rounded)
-  synced: boolean;   // برای مراحل آینده Sync
+  duration?: number; // Minutes
+  synced: boolean;
   userId: string | null;
 }
 
@@ -25,58 +25,53 @@ interface TimeState {
   clearAllEntries: () => void;
 }
 
-
 export const useTimeStore = create<TimeState>()(
-  
   persist(
     (set) => ({
       activeEntry: null,
       entries: [],
 
-   
-      startEntry: (id: string, name: string, company: string) => {
-        const newEntry = {
-          id: Date.now().toString(),
-          projectId: id, // در این نسخه ساده، از نام پروژه به عنوان شناسه استفاده می‌کنیم
-          projectName: name,
+      startEntry: (projectId: string, projectName: string, company: string) => {
+        const newEntry: TimeEntry = {
+          id: uuidv4(), // استفاده از uuid به جای Date.now جهت یکتا بودن شناسه
+          projectId: projectId,
+          projectName: projectName,
           clientName: company,
           startTime: Date.now(),
           endTime: null,
           duration: 0,
           synced: false,
-          userId: useProfileStore.getState().userId,
+          userId: useProfileStore.getState().clientName || null,
         };
         set({ activeEntry: newEntry });
       },
-      
-      stopActiveEntry: () => set((state) => {
-        if (!state.activeEntry) return state;
 
-        const endTime = Date.now();
-        const diffInMs = endTime - state.activeEntry.startTime;
-        
-        const totalMinutes = Math.floor(diffInMs / 60000);
+      stopActiveEntry: () =>
+        set((state) => {
+          if (!state.activeEntry) return state;
 
-        const completedEntry = {
-          ...state.activeEntry,
-          endTime,
-          duration: totalMinutes, 
-          synced: false,
-        };
+          const endTime = Date.now();
+          const diffInMs = endTime - state.activeEntry.startTime;
+          const totalMinutes = Math.floor(diffInMs / 60000);
 
-        return {
-          activeEntry: null,
-          entries: [completedEntry, ...state.entries],
-        };
-      }),
+          const completedEntry: TimeEntry = {
+            ...state.activeEntry,
+            endTime,
+            duration: totalMinutes,
+            synced: false,
+          };
+
+          return {
+            activeEntry: null,
+            entries: [completedEntry, ...state.entries],
+          };
+        }),
 
       clearAllEntries: () => set({ entries: [], activeEntry: null }),
-
     }),
     {
-      name: 'time-entries-storage', // نام کلید در حافظه گوشی
+      name: 'time-entries-storage',
       storage: createJSONStorage(() => AsyncStorage),
-
     }
   )
 );

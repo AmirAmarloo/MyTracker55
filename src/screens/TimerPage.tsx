@@ -5,69 +5,56 @@ import { formatDurationHHMM } from '../helpers/timeFormatter';
 import { ProjectSelectModal } from '../components/ProjectSelectModal';
 import { useProjectStore } from '../state/useProjectStore'; 
 import { useProfileStore } from '../state/useProfileStore';
- 
 
 const TimerPage = () => {
-const { activeEntry, startEntry, stopActiveEntry } = useTimeStore();
-const [elapsed, setElapsed] = useState(0);
-const projects = useProjectStore((state) => state.projects);
-const selectedProject = useProjectStore((state) => state.selectedProject);
-const selectProject = useProjectStore((state) => state.selectProject);
-const [modalVisible, setModalVisible] = useState(false);
-const syncProjectsFromQR = useProjectStore((state) => state.syncProjectsFromQR);
-const { userId, allowedProjects } = useProfileStore();
+  // ۱. نام‌های دقیق توابع موجود در useTimeStore شما
+  const { activeEntry, startEntry, stopActiveEntry } = useTimeStore();
+  const [elapsed, setElapsed] = useState(0);
 
-/*
-useEffect(() => {
-  if (allowedProjects && allowedProjects.length > 0) {
-    const formattedProjects = allowedProjects.map(name => ({
-      id: name,
-      name: name
-    }));
+  // ۲. اکشن‌های useProjectStore
+  const projects = useProjectStore((state) => state.projects) || [];
+  const selectedProject = useProjectStore((state) => state.selectedProject);
+  const setSelectedProject = useProjectStore((state) => state.setSelectedProject);
 
-    // ریختن مستقیم در استور پروژه
-    useProjectStore.setState({ 
-      projects: formattedProjects, 
-      loading: false 
-    });
-  }
-}, [allowedProjects]); // فقط وقتی لیست اسکن شده تغییر کرد، این اجرا شود
-*/
+  // ۳. اطلاعات شرکت
+  const clientName = useProfileStore((state) => state.clientName);
 
-useEffect(() => {
-  console.log("TEST - Projects in Store:", projects);
-}, [projects]);
+  const [modalVisible, setModalVisible] = useState(false);
 
-useEffect(() => {
-  console.log("Current Projects in Store:", projects);
-}, [projects]);
+  // به‌روزرسانی ثانیه‌شمار تایمر (تایپ اصلاح شده برای React Native)
+  useEffect(() => {
+    let interval: any;
+    if (activeEntry) {
+      interval = setInterval(() => {
+        setElapsed(Math.floor((Date.now() - activeEntry.startTime) / 1000));
+      }, 1000);
+    } else {
+      setElapsed(0);
+    }
+    return () => clearInterval(interval);
+  }, [activeEntry]);
 
+  const handleStartPress = () => {
+    if (!selectedProject) {    
+      setModalVisible(true);
+      return;
+    }
 
-// به‌روزرسانی ثانیه‌شمار وقتی تایمر فعال است
-useEffect(() => {
-  let interval: NodeJS.Timeout;
-  if (activeEntry) {
-    interval = setInterval(() => {
-      setElapsed(Math.floor((Date.now() - activeEntry.startTime) / 1000));
-    }, 1000);
-  } else {
-    setElapsed(0);
-  }
-  return () => clearInterval(interval);
-}, [activeEntry]);
-
-const handleStartPress = () => {
-  if (!selectedProject) {    
-    setModalVisible(true); // اگر پروژه انتخاب نشده، اول مدال را باز کن
-  } else {
-    startEntry(selectedProject.id, selectedProject.name, selectedProject.clientName || "Unknown Client");
-    console.log("Timer started for client:", selectedProject.clientName);
-  }
-};
+    if (typeof startEntry === 'function') {
+      startEntry(
+        selectedProject.id, 
+        selectedProject.name, 
+        clientName || selectedProject.clientName || "General"
+      );
+    } else {
+      console.error("CRITICAL: startEntry is undefined on useTimeStore!");
+      Alert.alert("Error", "Time store action not initialized correctly.");
+    }
+  };
 
   return (
-
     <View style={styles.container}>
+      {/* نمایش پروژه انتخاب شده */}
       <TouchableOpacity 
         onPress={() => {
           if (activeEntry) {
@@ -81,7 +68,7 @@ const handleStartPress = () => {
         }} 
         style={[
           styles.projectInfoContainer,
-          activeEntry && { opacity: 0.5 } 
+          !!activeEntry && { opacity: 0.5 } 
         ]}
       >
         <Text style={styles.projectLabel}>Selected Project:</Text>
@@ -92,6 +79,7 @@ const handleStartPress = () => {
 
       <Text style={styles.timerTitle}>Current Session</Text>
       
+      {/* دایره نمایش تایمر */}
       <View style={styles.timerCircle}>
         <Text style={styles.timerText}>
           {activeEntry ? formatDurationHHMM(elapsed) : "00:00"}
@@ -99,17 +87,18 @@ const handleStartPress = () => {
         {activeEntry && <Text style={styles.secondsText}>{elapsed % 60}s</Text>}
       </View>
 
+      {/* مدال انتخاب پروژه */}
       <ProjectSelectModal 
         visible={modalVisible} 
         projects={projects} 
         onClose={() => setModalVisible(false)}
-        onSelect={(p: any) => selectProject(p)}
+        onSelect={(p: any) => setSelectedProject(p)}
       />
 
+      {/* دکمه شروع و ثبت تایمر */}
       {!activeEntry ? (
         <TouchableOpacity 
           style={[styles.button, styles.startBtn]} 
-          //onPress={() => startEntry('Default Project')}
           onPress={handleStartPress}
         >
           <Text style={styles.buttonText}>Start Timer</Text>
@@ -146,35 +135,12 @@ const styles = StyleSheet.create({
   startBtn: { backgroundColor: '#28a745' },
   stopBtn: { backgroundColor: '#dc3545' },
   buttonText: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
-  projectSelector: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#fff',
-    padding: 15,
-    borderRadius: 10,
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: '#ddd',
-    width: '90%',
-    alignSelf: 'center',
-    // ایجاد سایه ملایم (Shadow)
-    elevation: 3,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-  },
   projectLabel: {
     fontSize: 14,
     color: '#666',
     marginRight: 10,
   },
-  projectName: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#333',
-  },
-projectInfoContainer: {
+  projectInfoContainer: {
     backgroundColor: '#f0f0f0',
     padding: 15,
     borderRadius: 12,

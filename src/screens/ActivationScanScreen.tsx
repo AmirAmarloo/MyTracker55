@@ -1,71 +1,71 @@
-import React, { useState } from 'react';
-import { View, StyleSheet, ActivityIndicator, Alert, Text, TouchableOpacity } from 'react-native';
+import React, { useState, useRef } from 'react';
+import { View, StyleSheet, ActivityIndicator, Alert, Text } from 'react-native';
 import QRScanner from '../components/QRScanner';
 import { useProfileStore } from '../state/useProfileStore';
-import { useProjectStore} from '../state/useProjectStore';
-import {ProjectState} from '../state/useProjectStore';
+import { useProjectStore } from '../state/useProjectStore';
 
-const ActivationScanScreen = () => {
-const [loading, setLoading] = useState(false);
-//  const activateProfile = useProfileStore((state) => state.activateProfile);
+const API_BASE_URL = 'http://172.20.10.12:8000';
 
-/*
+export const ActivationScanScreen = () => {
+  const [loading, setLoading] = useState(false);
+  const isProcessingRef = useRef(false);
 
-const handleScan = (rawString: string) => {
-  try {
-    const qrData = JSON.parse(rawString);
-    console.log("1. QR Scanned Successfully"); // تست مرحله یک
+  const setActivationProfile = useProfileStore((state) => state.setActivationProfile);
+  const setProjects = useProjectStore((state) => state.setProjects);
 
-    // فعال‌سازی پروفایل
-    useProfileStore.getState().activateProfile({
-      userId: qrData.userId,
-      companyId: qrData.projects?.[0]?.companyId || "Co-001",
-      userName: qrData.userId,
-      companyName: qrData.projects?.[0]?.companyName || "Company",
-      allowedProjects: qrData.projects?.map((p: any) => p.id) || []
-    });
+  const handleScan = async (qrRawData: string) => {
+    if (isProcessingRef.current) return;
+    isProcessingRef.current = true;
+    setLoading(true);
 
-    // 📍 نقطه حساس: اطمینان از ارسال دیتا به استور پروژه
-    console.log("2. Sending to Store:", qrData.projects?.length, "projects");
-    useProjectStore.getState().syncProjectsFromQR(qrData);
+    try {
+      let token = qrRawData.trim();
+      try {
+        const parsed = JSON.parse(qrRawData);
+        token = (parsed.activationToken || qrRawData).trim();
+      } catch {
+        token = qrRawData.trim();
+      }
 
-  } catch (error) {
-    console.error("QR Error:", error);
-  }
-};
+      const response = await fetch(`${API_BASE_URL}/auth/activate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ activationToken: token }),
+      });
 
-*/
-const handleScan = (rawString: string) => {
-  try {
-    const qrData = JSON.parse(rawString);
-    useProfileStore.getState().activateProfile({
-      userId: qrData.userId,
-      companyId: qrData.projects?.[0]?.companyId || "Co-001",
-      userName: qrData.userName || "User",
-      clientName: qrData.projects?.[0]?.clientName || qrData.projects?.[0]?.companyName || "Client",
-      allowedProjects: qrData.projects?.map((p: any) => p.id) || []
-    });
+      const data = await response.json();
 
-    const projectStore = useProjectStore.getState() as ProjectState;
-    if (projectStore && typeof projectStore.syncProjectsFromQR === 'function') {
-      projectStore.syncProjectsFromQR(qrData);
+      if (!response.ok) {
+        throw new Error(data.detail || 'Activation failed');
+      }
+
+      // ذخیره پروژه‌ها در Zustand
+      setProjects(data.projects);
+
+      // ذخیره پروفایل و تغییر profileStatus به 'active'
+      // با این کار App.tsx به طور خودکار صفحه را به MainTabNavigator تغییر می‌دهد
+      setActivationProfile({
+        clientName: data.clientName,
+        tenantSchema: data.tenantSchema,
+        authToken: data.authToken,
+      });
+
+    } catch (error: any) {
+      Alert.alert('Activation Error', error.message || 'Invalid QR Code');
+      isProcessingRef.current = false;
+      setLoading(false);
     }
-
-    Alert.alert("Success", "Projects loaded successfully!");
-  } catch (error) {
-    Alert.alert("Error", "Invalid QR Format");
-  }
-};
+  };
 
   return (
-     <View style={styles.container}>
+    <View style={styles.container}>
       {loading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#007AFF" />
-          <Text style={{ marginTop: 10 }}>Activating...</Text>
+          <Text style={styles.loadingText}>Activating Device...</Text>
+          <Text style={styles.subText}>Setting up tenant workspace...</Text>
         </View>
       ) : (
-        /* فرستادن تابع به کامپوننت اسکنر */
         <QRScanner onScanned={handleScan} />
       )}
     </View>
@@ -73,13 +73,10 @@ const handleScan = (rawString: string) => {
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#000' },
-  loadingContainer: { 
-    flex: 1, 
-    justifyContent: 'center', 
-    alignItems: 'center', 
-    backgroundColor: '#fff' 
-  }
+  container: { flex: 1, backgroundColor: '#121212' },
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#ffffff' },
+  loadingText: { marginTop: 15, fontSize: 18, fontWeight: 'bold', color: '#007AFF' },
+  subText: { marginTop: 5, fontSize: 14, color: '#666' }
 });
 
 export default ActivationScanScreen;

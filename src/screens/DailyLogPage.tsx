@@ -1,23 +1,22 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert} from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert, LayoutAnimation, Platform, UIManager } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTimeStore } from '../state/useTimeStore';
 import { useProfileStore } from '../state/useProfileStore';
 import { useProjectStore } from '../state/useProjectStore';
 import { formatDurationHHMM } from '../helpers/timeFormatter';
-import { LayoutAnimation, Platform, UIManager } from 'react-native';
 import { TimeEntry } from '../state/useTimeStore';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
+
 export default function DailyLogPage() {
   const entries = useTimeStore((state) => state.entries) || [];
-  const { userName, clientName, resetProfile } = useProfileStore();
-  const { clearAllEntries } = useTimeStore(); 
+  const clearProfile = useProfileStore((state) => state.clearProfile);
+  const clearProjects = useProjectStore((state) => state.clearProjects);
   const [selectedDate, setSelectedDate] = useState(new Date());
 
-  
   const now = new Date();
 
   // ۱. محاسبه مجموع هفته جاری 
@@ -35,56 +34,39 @@ export default function DailyLogPage() {
     .filter(e => new Date(e.startTime) >= startOfMonth)
     .reduce((sum, e) => sum + (e.duration || 0), 0);
 
-
   const filteredEntries = entries.filter(entry => {
     const entryDate = new Date(entry.startTime).toDateString();
     const targetDate = selectedDate.toDateString();
     return entryDate === targetDate;
   });
-  const [showDetails, setShowDetails] = useState(false);
-  const totalMinutes = filteredEntries.reduce((sum, item: any) => sum + (Number(item.duration) || 0), 0);
-  const totalHours = Math.floor(totalMinutes / 60);
-  const remainingMins = totalMinutes % 60;
-  const projectSummary = filteredEntries.reduce((acc: { [key: string]: number }, entry: TimeEntry) => {
-    // استفاده از projectName به عنوان کلید برای لیست پروژه‌ها
-    const name = entry.projectName || 'Unknown Project';
-    acc[name] = (acc[name] || 0) + (entry.duration || 0);
-    return acc;
-  }, {});
 
+  const [showDetails, setShowDetails] = useState(false);
   const totalDayMinutes = filteredEntries.reduce((sum, entry) => sum + (entry.duration || 0), 0);
 
-  const handleLogoutPress = () => {
-    Alert.alert(
-      "Logout", 
-      "Are you sure? All data for this user will be cleared.", 
-      [
-        { text: "Cancel", style: "cancel" },
-        { 
-          text: "Yes, Reset", 
-          style: "destructive", 
-          onPress: async () => {
-            await Promise.all([
-              useProfileStore.persist.clearStorage(),
-              useTimeStore.persist.clearStorage(),
-              useProjectStore.persist.clearStorage()
-            ]);
-            useProfileStore.getState().resetProfile();
-            useTimeStore.setState({ entries: [], activeEntry: null });
-            useProjectStore.getState().clearSelection();
-          } 
-        }
-      ]
-    );
-  };
-
+const handleLogoutPress = () => {
+  Alert.alert(
+    "Logout", 
+    "Are you sure? All data for this user will be cleared.", 
+    [
+      { text: "Cancel", style: "cancel" },
+      { 
+        text: "Yes, Reset", 
+        style: "destructive", 
+        onPress: () => {
+          clearProfile();
+          clearProjects();
+          useTimeStore.setState({ entries: [], activeEntry: null });
+        } 
+      }
+    ]
+  );
+};
 
   const groupedByCompany = filteredEntries.reduce((acc: any, entry: TimeEntry) => {
     const client = entry.clientName || 'General';
     const project = entry.projectName || 'Unknown';
 
     if (!acc[client]) acc[client] = {};
-    
     acc[client][project] = (acc[client][project] || 0) + (entry.duration || 0);
     
     return acc;
@@ -94,7 +76,7 @@ export default function DailyLogPage() {
     <SafeAreaView style={styles.container}>
       <View style={{ flex: 1, backgroundColor: '#f5f5f5' }}>
         
-        {/* هدر تاریخ - ثابت */}
+        {/* هدر تاریخ */}
         <View style={styles.dateHeader}>
           <TouchableOpacity onPress={() => {
             const prev = new Date(selectedDate);
@@ -117,23 +99,23 @@ export default function DailyLogPage() {
           </TouchableOpacity>
         </View>
 
-        {/* بخش خلاصه - ثابت */}
+        {/* بخش خلاصه */}
         <View style={styles.summaryContainer}>
           <Text style={styles.summaryTitle}>Daily Summary</Text>
 
           {Object.entries(groupedByCompany).map(([company, projects]: [string, any]) => (
-              <View key={company} style={{ marginBottom: 10 }}>
-                <Text style={styles.companySubHeader}>🏢 {company}</Text>
-                
-                {/* رندر پروژه‌های تجمیع شده در این شرکت */}
-                {Object.entries(projects).map(([projectName, duration]: [string, any]) => (
-                  <View key={projectName} style={styles.summaryRow}>
-                    <Text style={styles.summaryProjectName}>{projectName}</Text>
-                    <Text style={styles.summaryProjectTime}>{formatDurationHHMM(duration)}</Text>
-                  </View>
-                ))}
-              </View>
-            ))}
+            <View key={company} style={{ marginBottom: 10 }}>
+              <Text style={styles.companySubHeader}>🏢 {company}</Text>
+              
+              {Object.entries(projects).map(([projectName, duration]: [string, any]) => (
+                <View key={projectName} style={styles.summaryRow}>
+                  <Text style={styles.summaryProjectName}>{projectName}</Text>
+                  <Text style={styles.summaryProjectTime}>{formatDurationHHMM(duration)}</Text>
+                </View>
+              ))}
+            </View>
+          ))}
+
           <View style={styles.totalDivider} />
           
           <View style={styles.totalRow}>
@@ -141,7 +123,6 @@ export default function DailyLogPage() {
             <Text style={styles.totalValue}>{formatDurationHHMM(totalDayMinutes)}</Text>
           </View>
 
-          {/* بخش هفته و ماه بدون تغییر باقی می‌ماند */}
           <View style={styles.statsRow}>
             <View style={styles.statBox}>
               <Text style={styles.statLabel}>This Week</Text>
@@ -165,7 +146,8 @@ export default function DailyLogPage() {
             </Text>
           </TouchableOpacity>
         </View>
-        {/* لیست جزئیات - بخش اسکرول شونده */}
+
+        {/* لیست جزئیات */}
         <View style={{ flex: 1 }}> 
           {showDetails ? (
             <FlatList
@@ -196,11 +178,10 @@ export default function DailyLogPage() {
               ListEmptyComponent={
                 <Text style={styles.emptyText}>Keine Einträge.</Text>
               }
-              // اضافه کردن دکمه لاگ اوت به انتهای لیست برای جلوگیری از شلوغی
               ListFooterComponent={
                 <TouchableOpacity 
                   style={[styles.logoutBtn, { marginTop: 30, marginBottom: 50 }]}
-                  onPress={handleLogoutPress} // تابع لاگ‌اوت را جداگانه تعریف کنید
+                  onPress={handleLogoutPress}
                 >
                   <Text style={styles.logoutText}>Reset Profile (Logout)</Text>
                 </TouchableOpacity>
@@ -208,14 +189,13 @@ export default function DailyLogPage() {
               contentContainerStyle={{ paddingHorizontal: 15 }} 
             />
           ) : (
-            /* اگر لیست بسته بود، دکمه لاگ اوت را اینجا نشان بده */
             <View style={{ padding: 20 }}>
               <TouchableOpacity 
-                  style={styles.logoutBtn}
-                  onPress={handleLogoutPress}
-                >
-                  <Text style={styles.logoutText}>Reset Profile (Logout)</Text>
-                </TouchableOpacity>
+                style={styles.logoutBtn}
+                onPress={handleLogoutPress}
+              >
+                <Text style={styles.logoutText}>Reset Profile (Logout)</Text>
+              </TouchableOpacity>
             </View>
           )}
         </View>
@@ -236,25 +216,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingTop: 10,
     paddingBottom: 15,
-    paddingVertical: 20, 
     paddingHorizontal: 20,
     backgroundColor: '#fff',
-    borderBottomWidth: 0,
-    borderBottomColor: '#eee',
-    marginTop: 0,
-    elevation: 0,
-    zIndex: 10,
   },
-  profileHeader: {
-    paddingVertical: 10,
-    backgroundColor: '#f1f3f5',
-    borderBottomWidth: 1,
-    borderBottomColor: '#dee2e6',
-    alignItems: 'center',
-  },
-  profileText: { fontSize: 13, color: '#495057', fontWeight: '600' },
-  header: { padding: 20 },
-  title: { fontSize: 28, fontWeight: 'bold', color: '#212529' },
   entryRow: { 
     padding: 15, 
     borderBottomWidth: 1, 
@@ -264,7 +228,7 @@ const styles = StyleSheet.create({
     alignItems: 'center'
   },
   logoutBtn: {
-    backgroundColor: '#ff3b30', // قرمز استاندارد iOS
+    backgroundColor: '#ff3b30',
     padding: 15,
     margin: 20,
     borderRadius: 10,
@@ -274,51 +238,30 @@ const styles = StyleSheet.create({
     color: 'white',
     fontWeight: 'bold',
     fontSize: 16
-  },  
-
-  summaryBox: {
-    backgroundColor: '#007AFF',
-    margin: 20,
-    padding: 20,
-    borderRadius: 15,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    // ایجاد سایه برای شکیل شدن (مخصوص iOS)
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
   },
-  summaryValue: {
-    color: '#fff',
-    fontSize: 22,
-    fontWeight: 'bold',
-  },  
-  projectName: { fontSize: 16, fontWeight: 'bold', color: '#333', marginBottom: 4, },
   dateText: { fontSize: 12, color: '#adb5bd', marginTop: 4 },
   durationText: { fontSize: 18, fontWeight: 'bold', color: '#007AFF' },
   emptyText: { textAlign: 'center', marginTop: 50, color: '#999' },
   projectTag: {
-      backgroundColor: '#007AFF', // آبی استاندارد iOS
-      paddingHorizontal: 10,
-      paddingVertical: 4,
-      borderRadius: 6,
-      alignSelf: 'flex-start', // باعث می‌شود باکس فقط به اندازه متن کش بیاید
-      marginBottom: 6,
-    },
+    backgroundColor: '#007AFF',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+    alignSelf: 'flex-start',
+    marginBottom: 6,
+  },
   projectTagText: {
-    color: '#FFFFFF', // متن حتماً سفید باشد که روی آبی دیده شود
+    color: '#FFFFFF',
     fontSize: 11,
     fontWeight: 'bold',
-    textTransform: 'uppercase', // برای ظاهر حرفه‌ای‌تر
+    textTransform: 'uppercase',
   },
   projectNameText: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#444',      // رنگ خاکستری تیره برای خوانایی بهتر
-    marginLeft: 10,     // ایجاد فاصله از تگ آبی کد پروژه
-    flex: 1,            // باعث می‌شود اگر متن طولانی بود، در فضای باقی‌مانده بشکند
+    color: '#444',
+    marginLeft: 10,
+    flex: 1,
   },
   summaryContainer: {
     backgroundColor: '#f8f9fa',
@@ -326,7 +269,6 @@ const styles = StyleSheet.create({
     padding: 15,
     marginTop: 0,
     borderRadius: 12,
-    elevation: 2,
     borderWidth: 1,
     borderColor: '#eee',
     shadowColor: '#000',
@@ -337,12 +279,10 @@ const styles = StyleSheet.create({
   summaryTitle: { fontSize: 16, fontWeight: 'bold', color: '#666', marginBottom: 15 },
   summaryRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
   summaryProjectTime: { fontWeight: '600', color: '#333' },
-  
   totalDivider: { height: 1, backgroundColor: '#eee', marginVertical: 12 },
   totalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   totalLabel: { fontSize: 16, fontWeight: 'bold', color: '#2c3e50' },
   totalValue: { fontSize: 18, fontWeight: 'bold', color: '#007AFF' },
-
   detailsToggleButton: {
     marginTop: 15,
     paddingVertical: 10,
@@ -388,9 +328,8 @@ const styles = StyleSheet.create({
     marginTop: 5,
   },
   toggleButtonText: { color: '#007AFF', fontWeight: 'bold', fontSize: 13 },
-  summaryItem: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 5 },
   summaryProjectName: { fontWeight: '600', color: '#333' },
-  summaryDuration: { color: '#007AFF', fontWeight: 'bold' },  
-  dateTitle: { fontSize: 17, fontWeight: '600', color: '#1a1a1a', letterSpacing: 0.5,},
-  arrow: { fontSize: 22, color: '#007AFF', paddingHorizontal: 15 }  
+  dateTitle: { fontSize: 17, fontWeight: '600', color: '#1a1a1a', letterSpacing: 0.5 },
+  arrow: { fontSize: 22, color: '#007AFF', paddingHorizontal: 15 }
 });
+
