@@ -9,16 +9,17 @@
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"     
+      "backgroundColor": "#ffffff"
     },
     "plugins": [
-          [
-            "expo-camera",
-            {
-              "cameraPermission": "MyTracker55 needs access to your camera to scan the activation QR code."
-            }
-          ]
-        ],    
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "MyTracker55 needs access to your camera to scan the activation QR code."
+        }
+      ],
+      "expo-status-bar"
+    ],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.amirhooshang.MyTracker55",
