@@ -1,2 +1,3 @@
+D:\MyFiles\Projects\CostAccounting\MyTracker55\HowToRun.txt
 set REACT_NATIVE_PACKAGER_HOSTNAME=172.20.10.12
 npx expo start --lan -c

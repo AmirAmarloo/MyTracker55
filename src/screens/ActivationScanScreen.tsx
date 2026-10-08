@@ -48,6 +48,7 @@ export const ActivationScanScreen = () => {
         clientName: data.clientName,
         tenantSchema: data.tenantSchema,
         authToken: data.authToken,
+        role: data.role,
       });
 
     } catch (error: any) {

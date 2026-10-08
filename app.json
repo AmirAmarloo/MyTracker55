@@ -18,7 +18,8 @@
           "cameraPermission": "MyTracker55 needs access to your camera to scan the activation QR code."
         }
       ],
-      "expo-status-bar"
+      "expo-status-bar",
+      "expo-sharing"
     ],
     "ios": {
       "supportsTablet": true,
