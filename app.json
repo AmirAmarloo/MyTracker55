@@ -19,13 +19,15 @@
         }
       ],
       "expo-status-bar",
-      "expo-sharing"
+      "expo-sharing",
+      "@react-native-community/datetimepicker"
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.amirhooshang.MyTracker55",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": true
+        }
       }
     },
     "android": {

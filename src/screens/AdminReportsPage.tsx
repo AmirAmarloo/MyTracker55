@@ -8,10 +8,20 @@ import { useProfileStore } from '../state/useProfileStore';
 
 export default function AdminReportsPage() {
   const entries = useTimeStore((state) => state.entries);
+  const syncWithBackend = useTimeStore((state) => state.syncWithBackend);
   const clientName = useProfileStore((state) => state.clientName);
 
-  const totalMinutes = entries.reduce((acc, item) => acc + (item.duration || 0), 0);
-  const totalHours = (totalMinutes / 60).toFixed(1);
+  const unSyncedCount = entries.filter((e) => !e.synced).length;
+
+  const handleSync = async () => {
+    if (unSyncedCount === 0) {
+      Alert.alert('Sync Status', 'All entries are already synced to the database.');
+      return;
+    }
+
+    await syncWithBackend();
+    Alert.alert('Sync Complete', 'Data successfully saved to PostgreSQL database!');
+  };
 
   const handleExportCSV = async () => {
     if (entries.length === 0) {
@@ -64,13 +74,14 @@ export default function AdminReportsPage() {
       </View>
 
       <View style={styles.summaryCard}>
-        <Text style={styles.cardTitle}>Total Tracked Time</Text>
-        <Text style={styles.statValue}>{totalHours} Hours</Text>
-        <Text style={styles.statSub}>{entries.length} Total Recorded Sessions</Text>
+        <Text style={styles.cardTitle}>Unsynced Records</Text>
+        <Text style={styles.statValue}>{unSyncedCount} Pending</Text>
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Tax & Audit Reports</Text>
+        <TouchableOpacity style={styles.syncButton} onPress={handleSync}>
+          <Text style={styles.syncButtonText}>☁️ Sync Entries to Database</Text>
+        </TouchableOpacity>
 
         <TouchableOpacity style={styles.actionButton} onPress={handleExportCSV}>
           <Text style={styles.actionButtonText}>📊 Export Monthly Report (CSV)</Text>
@@ -93,9 +104,15 @@ const styles = StyleSheet.create({
   },
   cardTitle: { fontSize: 12, color: 'rgba(255,255,255,0.8)', fontWeight: 'bold' },
   statValue: { fontSize: 32, fontWeight: 'bold', color: '#fff', marginTop: 5 },
-  statSub: { fontSize: 12, color: 'rgba(255,255,255,0.9)', marginTop: 5 },
   section: { marginTop: 10 },
-  sectionTitle: { fontSize: 16, fontWeight: 'bold', color: '#444', marginBottom: 12 },
+  syncButton: {
+    backgroundColor: '#34C759',
+    padding: 16,
+    borderRadius: 10,
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  syncButtonText: { fontSize: 15, fontWeight: 'bold', color: '#fff' },
   actionButton: {
     backgroundColor: '#fff',
     padding: 16,
@@ -103,11 +120,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#007AFF',
     alignItems: 'center',
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
   },
   actionButtonText: { fontSize: 15, fontWeight: 'bold', color: '#007AFF' },
 });

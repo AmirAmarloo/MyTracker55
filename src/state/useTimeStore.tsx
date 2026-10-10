@@ -5,6 +5,13 @@ import 'react-native-get-random-values';
 import { v4 as uuidv4 } from 'uuid';
 import { useProfileStore } from './useProfileStore';
 
+export interface BreakEntry {
+  id: string;
+  startTime: number;
+  endTime?: number | null;
+  duration?: number;
+}
+
 export interface TimeEntry {
   id: string;
   projectId: string;
@@ -12,62 +19,156 @@ export interface TimeEntry {
   clientName: string;
   startTime: number;
   endTime?: number | null;
-  duration?: number; // Minutes
+  duration?: number;
+  breaks?: BreakEntry[];
+  totalBreakDuration?: number;
   synced: boolean;
   userId: string | null;
 }
 
 interface TimeState {
   activeEntry: TimeEntry | null;
+  activeBreak: BreakEntry | null;
   entries: TimeEntry[];
   startEntry: (projectId: string, projectName: string, company: string) => void;
-  stopActiveEntry: () => void;
+  pauseEntry: () => void;
+  resumeEntry: () => void;
+  stopActiveEntry: () => Promise<void>;
   clearAllEntries: () => void;
+  syncWithBackend: () => Promise<void>;
 }
 
 export const useTimeStore = create<TimeState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       activeEntry: null,
+      activeBreak: null,
       entries: [],
 
       startEntry: (projectId: string, projectName: string, company: string) => {
         const newEntry: TimeEntry = {
-          id: uuidv4(), // استفاده از uuid به جای Date.now جهت یکتا بودن شناسه
-          projectId: projectId,
-          projectName: projectName,
+          id: uuidv4(),
+          projectId,
+          projectName,
           clientName: company,
           startTime: Date.now(),
           endTime: null,
           duration: 0,
+          breaks: [],
+          totalBreakDuration: 0,
           synced: false,
-          userId: useProfileStore.getState().clientName || null,
+          userId: null,
         };
-        set({ activeEntry: newEntry });
+        set({ activeEntry: newEntry, activeBreak: null });
       },
 
-      stopActiveEntry: () =>
-        set((state) => {
-          if (!state.activeEntry) return state;
+      pauseEntry: () => {
+        const { activeEntry, activeBreak } = get();
+        if (!activeEntry || activeBreak) return;
 
-          const endTime = Date.now();
-          const diffInMs = endTime - state.activeEntry.startTime;
-          const totalMinutes = Math.floor(diffInMs / 60000);
+        const newBreak: BreakEntry = {
+          id: uuidv4(),
+          startTime: Date.now(),
+          endTime: null,
+          duration: 0,
+        };
 
-          const completedEntry: TimeEntry = {
-            ...state.activeEntry,
-            endTime,
-            duration: totalMinutes,
-            synced: false,
-          };
+        set({ activeBreak: newBreak });
+      },
 
-          return {
-            activeEntry: null,
-            entries: [completedEntry, ...state.entries],
-          };
-        }),
+      resumeEntry: () => {
+        const { activeEntry, activeBreak } = get();
+        if (!activeEntry || !activeBreak) return;
 
-      clearAllEntries: () => set({ entries: [], activeEntry: null }),
+        const endTime = Date.now();
+        const breakDurationMinutes = Math.round((endTime - activeBreak.startTime) / (1000 * 60));
+        const validDuration = breakDurationMinutes > 0 ? breakDurationMinutes : 1;
+
+        const completedBreak: BreakEntry = {
+          ...activeBreak,
+          endTime,
+          duration: breakDurationMinutes > 0 ? breakDurationMinutes : 1,
+        };
+
+        const existingBreaks = activeEntry.breaks || [];
+        const updatedBreaks = [...existingBreaks, completedBreak];
+        const newTotalBreakDuration = (activeEntry.totalBreakDuration || 0) + validDuration;
+        //const newTotalBreakDuration = (activeEntry.totalBreakDuration || 0) + completedBreak.duration;
+
+        set({
+          activeEntry: {
+            ...activeEntry,
+            breaks: updatedBreaks,
+            totalBreakDuration: newTotalBreakDuration,
+          },
+          activeBreak: null,
+        });
+      },
+
+      stopActiveEntry: async () => {
+        const { activeEntry, activeBreak, entries, resumeEntry, syncWithBackend } = get();
+        if (!activeEntry) return;
+
+        if (activeBreak) {
+          resumeEntry();
+        }
+
+        const latestState = get();
+        const currentActive = latestState.activeEntry;
+        if (!currentActive) return;
+
+        const endTime = Date.now();
+        const rawDurationMinutes = Math.round((endTime - currentActive.startTime) / (1000 * 60));
+        const netDurationMinutes = Math.max(0, rawDurationMinutes - (currentActive.totalBreakDuration || 0));
+
+        const completedEntry: TimeEntry = {
+          ...currentActive,
+          endTime,
+          duration: netDurationMinutes > 0 ? netDurationMinutes : 1,
+        };
+
+        set({
+          activeEntry: null,
+          activeBreak: null,
+          entries: [completedEntry, ...entries],
+        });
+
+        // سینک خودکار بلافاصله پس از ثبت
+        await syncWithBackend();
+      },
+
+      clearAllEntries: () => set({ entries: [], activeEntry: null, activeBreak: null }),
+
+      syncWithBackend: async () => {
+        const { tenantSchema } = useProfileStore.getState();
+        const unSyncedEntries = get().entries.filter((e) => !e.synced);
+
+        if (unSyncedEntries.length === 0 || !tenantSchema) return;
+
+        try {
+          const response = await fetch('http://172.20.10.12:8000/time-entries/sync', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              tenantSchema: tenantSchema,
+              entries: unSyncedEntries,
+            }),
+          });
+
+          if (response.ok) {
+            set((state) => ({
+              entries: state.entries.map((entry) => ({
+                ...entry,
+                synced: true,
+              })),
+            }));
+          }
+        } catch (error) {
+          console.log('Background Sync Warning (Will retry later):', error);
+        }
+      },
     }),
     {
       name: 'time-entries-storage',
