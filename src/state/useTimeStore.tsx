@@ -4,6 +4,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import 'react-native-get-random-values';
 import { v4 as uuidv4 } from 'uuid';
 import { useProfileStore } from './useProfileStore';
+import { API_BASE_URL } from '../utils/config';
+
 
 export interface BreakEntry {
   id: string;
@@ -146,7 +148,7 @@ export const useTimeStore = create<TimeState>()(
         if (unSyncedEntries.length === 0 || !tenantSchema) return;
 
         try {
-          const response = await fetch('http://172.20.10.12:8000/time-entries/sync', {
+          const response = await fetch(API_BASE_URL + '/time-entries/sync', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',

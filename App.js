@@ -8,6 +8,7 @@ import ActivationScanScreen from './src/screens/ActivationScanScreen';
 import TimerPage from './src/screens/TimerPage'; 
 import DailyLogPage from './src/screens/DailyLogPage';
 import AdminReportsPage from './src/screens/AdminReportsPage';
+import ProjectPage from './src/screens/ProjectsPage';
 
 const Tab = createBottomTabNavigator();
 
@@ -45,6 +46,13 @@ function MainTabNavigator() {
           name="Reports" 
           component={AdminReportsPage} 
           options={{ title: 'Admin Reports' }}
+        />
+      )}
+      {role === 'admin' && (
+        <Tab.Screen 
+          name="Projects" 
+          component={ProjectPage} 
+          options={{ title: 'Projects' }}
         />
       )}
     </Tab.Navigator>

@@ -1,8 +1,9 @@
 import { create } from 'zustand';
 import { useProfileStore } from './useProfileStore';
+import { API_BASE_URL } from '../utils/config';
 
 // آدرس IP جدید و درست لپ‌تاپ شما
-const API_BASE_URL = 'http://172.20.10.12:8000'; 
+//const API_BASE_URL = 'http://172.20.10.12:8000'; 
 
 export interface AbsenceItem {
   id?: string;
