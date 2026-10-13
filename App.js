@@ -8,6 +8,7 @@ import ActivationScanScreen from './src/screens/ActivationScanScreen';
 import TimerPage from './src/screens/TimerPage'; 
 import DailyLogPage from './src/screens/DailyLogPage';
 import AdminReportsPage from './src/screens/AdminReportsPage';
+import AdminApprovalPage from './src/screens/AdminApprovalPage';
 import ProjectPage from './src/screens/ProjectsPage';
 
 const Tab = createBottomTabNavigator();
@@ -21,13 +22,17 @@ function MainTabNavigator() {
         tabBarIcon: ({ color, size }) => {
           let iconName = 'time-outline';
 
-          if (route.name === 'Timer') {
+if (route.name === 'Timer') {
             iconName = 'time-outline';
           } else if (route.name === 'Logs') {
             iconName = 'list-outline';
           } else if (route.name === 'Reports') {
             iconName = 'bar-chart-outline';
-          }
+          } else if (route.name === 'Projects') {
+            iconName = 'folder-open-outline'; // 📁 آیکون اختصاصی پروژه‌ها
+          } else if (route.name === 'Approvals') {
+            iconName = 'checkmark-done-circle-outline'; // ✅ آیکون اختصاصی تاییدیه ادمین
+          } 
 
           return <Ionicons name={iconName} size={size} color={color} />;
         },
@@ -53,6 +58,13 @@ function MainTabNavigator() {
           name="Projects" 
           component={ProjectPage} 
           options={{ title: 'Projects' }}
+        />
+      )}
+      {role === 'admin' && (
+        <Tab.Screen 
+          name="Approvals" 
+          component={AdminApprovalPage} 
+          options={{ title: 'Approvals' }}
         />
       )}
     </Tab.Navigator>

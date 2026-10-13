@@ -13,13 +13,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useProfileStore } from '../state/useProfileStore';
 import { API_BASE_URL } from '../utils/config';
 
-//const API_BASE_URL = 'http://172.20.10.12:8000';
-
 interface Project {
   id: string;
   name: string;
   description?: string;
   isActive: boolean;
+  totalMinutes?: number; // اضافه شده برای دریافت مجموع کارکرد
 }
 
 interface Client {
@@ -70,21 +69,19 @@ export default function ProjectsPage() {
     fetchData();
   }, [tenantSchema]);
 
+  // تابع کمکی برای تبدیل دقایق به ساعت و دقیقه
+  const formatWorkTime = (totalMinutes?: number) => {
+    if (!totalMinutes || totalMinutes === 0) return '0 min';
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    return hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
+  };
+
   const handleCreateClient = async () => {
     if (!clientName.trim()) {
       Alert.alert('Error', 'Please enter a client name.');
       return;
     }
-  const payload = {
-      tenantSchema,
-      name: clientName.trim(),
-      email: clientEmail.trim() || null,
-      phone: clientPhone.trim() || null,
-      address: clientAddress.trim() || null,
-      taxId: clientTaxId.trim() || null,
-    };
-    console.log("Sending Client Payload:", payload);
-
     try {
       const response = await fetch(`${API_BASE_URL}/clients/create`, {
         method: 'POST',
@@ -120,14 +117,6 @@ export default function ProjectsPage() {
       Alert.alert('Error', 'Please select a client and enter a project name.');
       return;
     }
-    const payload = {
-      tenantSchema,
-      clientId: selectedClientId,
-      name: projectName.trim(),
-      description: projectDescription.trim() || null,
-    };
-    console.log("Sending Project Payload:", payload);
-
     try {
       const response = await fetch(`${API_BASE_URL}/projects/create`, {
         method: 'POST',
@@ -272,7 +261,12 @@ export default function ProjectsPage() {
                 ) : (
                   c.projects.map((p) => (
                     <View key={p.id} style={styles.projectRow}>
-                      <Text style={styles.projectName}>🔹 {p.name}</Text>
+                      <View style={styles.projectInfoRow}>
+                        <Text style={styles.projectName}>🔹 {p.name}</Text>
+                        <Text style={styles.projectTimeBadge}>
+                          ⏱️ {formatWorkTime(p.totalMinutes)}
+                        </Text>
+                      </View>
                       {p.description ? <Text style={styles.projectDesc}>{p.description}</Text> : null}
                     </View>
                   ))
@@ -342,7 +336,9 @@ const styles = StyleSheet.create({
   projectsContainer: { marginTop: 10, borderTopWidth: 1, borderTopColor: '#E5E5EA', paddingTop: 8 },
   projectsHeader: { fontSize: 13, fontWeight: '600', color: '#1C1C1E', marginBottom: 4 },
   noProjectsText: { fontSize: 12, color: '#8E8E93', fontStyle: 'italic' },
-  projectRow: { paddingVertical: 4, paddingLeft: 8 },
-  projectName: { fontSize: 13, fontWeight: '500', color: '#333333' },
-  projectDesc: { fontSize: 11, color: '#8E8E93', paddingLeft: 16 },
+  projectRow: { paddingVertical: 6, paddingLeft: 4, borderBottomWidth: 0.5, borderBottomColor: '#E5E5EA' },
+  projectInfoRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  projectName: { fontSize: 13, fontWeight: '600', color: '#333333' },
+  projectTimeBadge: { fontSize: 11, fontWeight: '600', color: '#007AFF', backgroundColor: '#E1F5FE', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
+  projectDesc: { fontSize: 11, color: '#8E8E93', paddingLeft: 16, marginTop: 2 },
 });
