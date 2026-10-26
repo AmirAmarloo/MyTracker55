@@ -1,18 +1,30 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { View, Text, StyleSheet, Alert, TouchableOpacity, Dimensions } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useProfileStore } from '../state/useProfileStore';
 import { useProjectStore } from '../state/useProjectStore';
+import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 const { width } = Dimensions.get('window');
 const SCAN_BOX_SIZE = width * 0.7;
 
+type RootStackParamList = {
+  ActivationScan: undefined;
+  ProjectsPage: undefined;
+  MainTabs: undefined;
+};
+
+type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
+
 export default function ActivationScanScreen() {
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(false);
+  const scannedRef = useRef(false);
 
   const setActivationProfile = useProfileStore((state) => state.setActivationProfile);
   const setProjects = useProjectStore((state) => state.setProjects);
+  const navigation = useNavigation<NavigationProp>();
 
   if (!permission) {
     return <View style={styles.container} />;
@@ -30,7 +42,8 @@ export default function ActivationScanScreen() {
   }
 
   const handleBarcodeScanned = async ({ data }: { data: string }) => {
-    if (scanned) return;
+    if (scannedRef.current) return;
+    scannedRef.current = true;
     setScanned(true);
 
     console.log('--- SCANNED RAW DATA ---:', data);
@@ -52,7 +65,6 @@ export default function ActivationScanScreen() {
 
       console.log('--- EXTRACTED TOKEN SENT TO FASTAPI ---:', extractedToken);
 
-      // ⚠️ IP آدرس لپ‌تاپ خود را در شبکه Wi-Fi وارد کنید
       const response = await fetch('http://172.20.10.12:8000/auth/activate', {
         method: 'POST',
         headers: {
@@ -81,15 +93,44 @@ export default function ActivationScanScreen() {
         role: responseData.role || 'admin',
       });
 
-      if (responseData.projects) {
-        setProjects(responseData.projects);
-      }
+      const loadedProjects = responseData.projects || [];
+      setProjects(loadedProjects);
 
-      Alert.alert('Success', 'Profile activated successfully!');
+      console.log('--- LOADED PROJECTS COUNT ---:', loadedProjects.length);
+
+      if (loadedProjects.length === 0) {
+        Alert.alert(
+          'Fresh Start',
+          'No projects found. Please create your first client and project.',
+          [
+            {
+              text: 'OK',
+              onPress: () => {
+                //navigation.navigate('ProjectsPage');
+              },
+            },
+          ]
+        );
+      } else {
+        Alert.alert('Success', 'Profile activated successfully!', [
+          /*{
+            text: 'OK',
+            onPress: () => {
+              navigation.navigate('MainTabs');
+            },
+          },*/
+        ]);
+      }
     } catch (error: any) {
       console.log('--- ACTIVATION CATCH ERROR ---:', error);
       Alert.alert('Activation Error', error.message || 'Activation failed', [
-        { text: 'Try Again', onPress: () => setScanned(false) }
+        { 
+          text: 'Try Again', 
+          onPress: () => {
+            scannedRef.current = false;
+            setScanned(false);
+          } 
+        }
       ]);
     }
   };
@@ -109,7 +150,13 @@ export default function ActivationScanScreen() {
         <Text style={styles.scanText}>Scan Activation QR Code</Text>
         <View style={styles.scanBox} />
         {scanned && (
-          <TouchableOpacity style={styles.btn} onPress={() => setScanned(false)}>
+          <TouchableOpacity 
+            style={styles.btn} 
+            onPress={() => {
+              scannedRef.current = false;
+              setScanned(false);
+            }}
+          >
             <Text style={styles.btnText}>Tap to Scan Again</Text>
           </TouchableOpacity>
         )}

@@ -15,8 +15,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTimeStore } from '../state/useTimeStore';
 import { useProjectStore } from '../state/useProjectStore';
 import { useProfileStore } from '../state/useProfileStore';
+import { useNavigation } from '@react-navigation/native';
 
 export default function TimerPage() {
+  const navigation = useNavigation<any>();
   const { activeEntry, activeBreak, startEntry, pauseEntry, resumeEntry, stopActiveEntry } = useTimeStore();
   const projects = useProjectStore((state) => state.projects);
   const clientName = useProfileStore((state) => state.clientName);
@@ -27,6 +29,8 @@ export default function TimerPage() {
   const [selectedProjectId, setSelectedProjectId] = useState<string>(availableProjects[0].id);
   const [isPickerOpen, setIsPickerOpen] = useState<boolean>(false);
   const [elapsedSeconds, setElapsedSeconds] = useState<number>(0);
+
+  
 
   // همگام‌سازی ID پروژه انتخابی هنگام بارگذاری پروژه‌ها از استور
   useEffect(() => {
@@ -111,6 +115,39 @@ export default function TimerPage() {
 
   const arbzgNotice = getArbzgStatus();  
 
+  if (!projects || projects.length === 0) {
+    return (
+      <View style={styles.centerContainer}>
+        <Text style={styles.warningTitle}>No Projects Found</Text>
+        <Text style={styles.pwarningText}>
+          Please create a client and a project first before tracking time.
+        </Text>
+        <TouchableOpacity 
+          style={styles.btn} 
+          onPress={() => navigation.navigate('Projects')}
+        >
+          <Text style={styles.btnText}>Go to Projects</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+  if (!projects || projects.length === 0) {
+      return (
+        <View style={styles.centerContainer}>
+          <Text style={styles.warningTitle}>No Projects Found</Text>
+          <Text style={styles.warningText}>
+            Please create a client and a project first before tracking time.
+          </Text>
+          <TouchableOpacity 
+            style={styles.btn} 
+            // چون نام تب پروژه‌ها 'Projects' است، مستقیم به آن هدایت می‌کنیم
+            onPress={() => navigation.navigate('Projects')}
+          >
+            <Text style={styles.btnText}>Go to Projects</Text>
+          </TouchableOpacity>
+        </View>
+      );
+  }
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
@@ -338,4 +375,30 @@ const styles = StyleSheet.create({
     color: '#C62828',
   },
 
+centerContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+    backgroundColor: '#fff',
+  },
+  warningTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#ff3b30',
+    marginBottom: 10,
+  },
+  btn: {
+    backgroundColor: '#007AFF',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  pwarningText: {
+      fontSize: 20,
+      color: '#666',
+      textAlign: 'center',
+      marginBottom: 20,
+    },
+  
 });

@@ -3,41 +3,45 @@ import {
   View,
   Text,
   StyleSheet,
-  TextInput,
-  TouchableOpacity,
   ScrollView,
+  TouchableOpacity,
+  TextInput,
   Alert,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { useProfileStore } from '../state/useProfileStore';
 import { API_BASE_URL } from '../utils/config';
 
 export default function ManualEntryPage() {
-  const { tenantSchema, role } = useProfileStore();
-  const userId = 'usr_device_user';
+  const { tenantSchema } = useProfileStore();
   
   const [projects, setProjects] = useState<any[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState('');
-  const [selectedProjectName, setSelectedProjectName] = useState('');
-  const [clientName, setClientName] = useState('');
   
-  // تاریخ و ساعت‌ها (به صورت ساده برای ورودی متنی یا پیکا)
-  const [startDateStr, setStartDateStr] = useState(''); // مثلاً 2026-06-06 09:00
-  const [endDateStr, setEndDateStr] = useState('');     // مثلاً 2026-06-06 17:00
-  const [note, setNote] = useState('');                 // دلیل ثبت دستی (اجباری)
+  // متغیرهای زمان شروع و پایان به‌صورت شیء Date
+  const [startDate, setStartDate] = useState(new Date());
+  const [endDate, setEndDate] = useState(new Date(Date.now() + 3600000)); // ۱ ساعت بعد به‌صورت پیش‌فرض
+  const [note, setNote] = useState('');
 
-  // گرفتن لیست پروژه‌ها برای انتخاب
+  // وضعیت نمایش انتخابگرها
+  const [showPicker, setShowPicker] = useState<{
+    target: 'start' | 'end' | null;
+    mode: 'date' | 'time';
+  }>({ target: null, mode: 'date' });
+
   useEffect(() => {
-    fetchProjects();
+    if (tenantSchema) {
+      loadProjects();
+    }
   }, [tenantSchema]);
 
-  const fetchProjects = async () => {
-    if (!tenantSchema) return;
+  const loadProjects = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/projects/list?tenantSchema=${tenantSchema}`);
-      if (response.ok) {
-        const data = await response.json();
-        // استخراج پروژه‌ها از لیست مشتریان
+      const res = await fetch(`${API_BASE_URL}/projects/list?tenantSchema=${tenantSchema}`);
+      const data = await res.json();
+      if (res.ok) {
         let allProjects: any[] = [];
         data.clients?.forEach((c: any) => {
           c.projects?.forEach((p: any) => {
@@ -51,116 +55,157 @@ export default function ManualEntryPage() {
     }
   };
 
-  const handleSelectProject = (proj: any) => {
-    setSelectedProjectId(proj.id);
-    setSelectedProjectName(proj.name);
-    setClientName(proj.clientName || '');
-  };
-
-  const handleSubmitManualEntry = async () => {
-    if (!selectedProjectId || !startDateStr || !endDateStr || !note.trim()) {
-      Alert.alert('خطا', 'لطفاً پروژه، بازه زمانی و دلیل ثبت دستی را وارد کنید.');
+  // تغییر تاریخ/زمان انتخاب شده
+  const onChangePicker = (event: any, selectedDate?: Date) => {
+    if (event.type === 'dismissed') {
+      setShowPicker({ target: null, mode: 'date' });
       return;
     }
 
-    try {
-      // تبدیل تاریخ‌های متنی به Timestamp (میلی‌ثانیه)
-      const startTime = new Date(startDateStr).getTime();
-      const endTime = new Date(endDateStr).getTime();
-
-      if (isNaN(startTime) || isNaN(endTime) || endTime <= startTime) {
-        Alert.alert('خطا', 'فرمت تاریخ یا ساعت نامعتبر است.');
-        return;
+    if (selectedDate) {
+      if (showPicker.target === 'start') {
+        setStartDate(selectedDate);
+      } else if (showPicker.target === 'end') {
+        setEndDate(selectedDate);
       }
+    }
 
-      const durationMinutes = Math.round((endTime - startTime) / (1000 * 60));
+    // در اندروید پس از انتخاب تاریخ/زمان پیکر بسته می‌شود
+    //if (Platform.OS === 'android') {
+      setShowPicker({ target: null, mode: 'date' });
+    //}
+  };
 
-      const payload = {
-        tenantSchema,
-        userId: userId || 'usr_default',
-        projectId: selectedProjectId,
-        projectName: selectedProjectName,
-        clientName: clientName,
-        startTime,
-        endTime,
-        duration: durationMinutes,
-        note: note.trim(),
-      };
+  const handleEmployeeSubmit = async () => {
+    if (!selectedProjectId || !note.trim()) {
+      Alert.alert('Error', 'Please select a project and provide a note.');
+      return;
+    }
 
-      const response = await fetch(`${API_BASE_URL}/time-entries/manual`, {
+    const startTime = startDate.getTime();
+    const endTime = endDate.getTime();
+
+    if (endTime <= startTime) {
+      Alert.alert('Error', 'End time must be after start time.');
+      return;
+    }
+
+    const duration = Math.round((endTime - startTime) / (1000 * 60));
+    const selectedProj = projects.find((p) => p.id === selectedProjectId);
+    const currentUserId = 'usr_device_user';
+
+    const payload = {
+      tenantSchema,
+      userId: currentUserId,
+      projectId: selectedProjectId,
+      projectName: selectedProj?.name || 'Unknown Project',
+      clientName: selectedProj?.clientName || '',
+      startTime,
+      endTime,
+      duration,
+      note: note.trim(),
+      isAdminAction: false, // وضعیت pending ثبت می‌شود
+    };
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/time-entries/manual`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
 
-      if (response.ok) {
-        Alert.alert('موفقیت', 'درخواست ثبت دستی با موفقیت ارسال شد و در انتظار تایید ادمین است.');
-        setStartDateStr('');
-        setEndDateStr('');
+      if (res.ok) {
+        Alert.alert('Success', 'Manual entry submitted successfully and waiting for admin approval.');
         setNote('');
+        setSelectedProjectId('');
       } else {
-        Alert.alert('خطا', 'ثبت درخواست با شکست مواجه شد.');
+        Alert.alert('Error', 'Failed to submit manual entry.');
       }
     } catch (error: any) {
-      Alert.alert('خطا', error.message || 'مشکل در ارتباط با سرور.');
+      Alert.alert('Error', error.message || 'Server connection error.');
     }
   };
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scroll}>
-        <Text style={styles.title}>✍️ ثبت دستی زمان کارکرد</Text>
-        <Text style={styles.subtitle}>برای مواردی که فراموش کرده‌اید تایمر را روشن کنید</Text>
+      <View style={styles.header}>
+        <Text style={styles.title}>✍️ Manual Time Entry</Text>
+      </View>
 
-        {/* انتخاب پروژه */}
-        <Text style={styles.label}>انتخاب پروژه:</Text>
+      <ScrollView contentContainerStyle={styles.scroll}>
+        <Text style={styles.label}>Select Project:</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipsRow}>
           {projects.map((p) => (
             <TouchableOpacity
               key={p.id}
               style={[styles.chip, selectedProjectId === p.id && styles.selectedChip]}
-              onPress={() => handleSelectProject(p)}
+              onPress={() => setSelectedProjectId(p.id)}
             >
               <Text style={[styles.chipText, selectedProjectId === p.id && styles.selectedChipText]}>
-                {p.name} ({p.clientName})
+                {p.name}
               </Text>
             </TouchableOpacity>
           ))}
         </ScrollView>
 
-        {/* تاریخ و ساعت شروع */}
-        <Text style={styles.label}>زمان شروع (مثلاً: 2026-06-06T09:00:00):</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="YYYY-MM-DD HH:MM"
-          placeholderTextColor="#8E8E93"
-          value={startDateStr}
-          onChangeText={setStartDateStr}
-        />
+        {/* بخش انتخاب زمان شروع */}
+        <Text style={styles.label}>Start Time:</Text>
+        <View style={styles.dateTimeRow}>
+          <TouchableOpacity
+            style={styles.pickerBtn}
+            onPress={() => setShowPicker({ target: 'start', mode: 'date' })}
+          >
+            <Text style={styles.pickerBtnText}>📅 {startDate.toLocaleDateString()}</Text>
+          </TouchableOpacity>
 
-        {/* تاریخ و ساعت پایان */}
-        <Text style={styles.label}>زمان پایان (مثلاً: 2026-06-06T17:00:00):</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="YYYY-MM-DD HH:MM"
-          placeholderTextColor="#8E8E93"
-          value={endDateStr}
-          onChangeText={setEndDateStr}
-        />
+          <TouchableOpacity
+            style={styles.pickerBtn}
+            onPress={() => setShowPicker({ target: 'start', mode: 'time' })}
+          >
+            <Text style={styles.pickerBtnText}>⏰ {startDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
+          </TouchableOpacity>
+        </View>
 
-        {/* دلیل ثبت دستی (اجباری) */}
-        <Text style={styles.label}>دلیل ثبت دستی (توضیحات):</Text>
+        {/* بخش انتخاب زمان پایان */}
+        <Text style={styles.label}>End Time:</Text>
+        <View style={styles.dateTimeRow}>
+          <TouchableOpacity
+            style={styles.pickerBtn}
+            onPress={() => setShowPicker({ target: 'end', mode: 'date' })}
+          >
+            <Text style={styles.pickerBtnText}>📅 {endDate.toLocaleDateString()}</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.pickerBtn}
+            onPress={() => setShowPicker({ target: 'end', mode: 'time' })}
+          >
+            <Text style={styles.pickerBtnText}>⏰ {endDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* نمایش DatePicker هنگام کلیک */}
+        {showPicker.target !== null && (
+          <DateTimePicker
+            value={showPicker.target === 'start' ? startDate : endDate}
+            mode={showPicker.mode}
+            is24Hour={true}
+            display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+            onChange={onChangePicker}
+          />
+        )}
+
+        <Text style={styles.label}>Note / Description:</Text>
         <TextInput
           style={[styles.input, { height: 80, textAlignVertical: 'top' }]}
-          placeholder="مثلاً: قطع اینترنت یا فراموشی در شروع کار..."
-          placeholderTextColor="#8E8E93"
           multiline
+          placeholder="What did you work on?"
           value={note}
           onChangeText={setNote}
         />
 
-        <TouchableOpacity style={styles.submitButton} onPress={handleSubmitManualEntry}>
-          <Text style={styles.submitButtonText}>ارسال برای تایید ادمین</Text>
+        <TouchableOpacity style={styles.submitBtn} onPress={handleEmployeeSubmit}>
+          <Text style={styles.submitBtnText}>Submit for Approval</Text>
         </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
@@ -169,16 +214,19 @@ export default function ManualEntryPage() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F2F2F7' },
+  header: { padding: 20, backgroundColor: '#FFFFFF', borderBottomWidth: 1, borderBottomColor: '#C7C7CC' },
+  title: { fontSize: 18, fontWeight: 'bold', color: '#1C1C1E' },
   scroll: { padding: 20 },
-  title: { fontSize: 20, fontWeight: 'bold', color: '#1C1C1E', marginBottom: 4 },
-  subtitle: { fontSize: 13, color: '#8E8E93', marginBottom: 20 },
-  label: { fontSize: 13, fontWeight: '600', color: '#3A3A3C', marginBottom: 6, marginTop: 10 },
-  chipsRow: { flexDirection: 'row', marginBottom: 15 },
+  label: { fontSize: 13, fontWeight: '600', color: '#3A3A3C', marginBottom: 6, marginTop: 12 },
+  chipsRow: { flexDirection: 'row', marginBottom: 10 },
   chip: { paddingHorizontal: 12, paddingVertical: 8, backgroundColor: '#FFFFFF', borderRadius: 8, marginRight: 8, borderWidth: 1, borderColor: '#C7C7CC' },
   selectedChip: { backgroundColor: '#007AFF', borderColor: '#007AFF' },
-  chipText: { fontSize: 13, color: '#333333' },
-  selectedChipText: { color: '#FFFFFF', fontWeight: 'bold' },
+  chipText: { fontSize: 13, color: '#333' },
+  selectedChipText: { color: '#FFF', fontWeight: 'bold' },
+  dateTimeRow: { flexDirection: 'row', justifyContent: 'space-between' },
+  pickerBtn: { flex: 0.48, backgroundColor: '#FFFFFF', padding: 12, borderRadius: 8, borderWidth: 1, borderColor: '#C7C7CC', alignItems: 'center' },
+  pickerBtnText: { fontSize: 14, color: '#1C1C1E', fontWeight: '500' },
   input: { backgroundColor: '#FFFFFF', paddingHorizontal: 12, paddingVertical: 10, borderRadius: 8, fontSize: 14, color: '#1C1C1E', borderWidth: 1, borderColor: '#C7C7CC' },
-  submitButton: { backgroundColor: '#34C759', padding: 14, borderRadius: 10, alignItems: 'center', marginTop: 25 },
-  submitButtonText: { color: '#FFFFFF', fontSize: 15, fontWeight: 'bold' },
+  submitBtn: { backgroundColor: '#34C759', padding: 15, borderRadius: 10, alignItems: 'center', marginTop: 30 },
+  submitBtnText: { color: '#FFFFFF', fontSize: 16, fontWeight: 'bold' },
 });

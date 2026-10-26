@@ -37,10 +37,13 @@ export default function AdminApprovalPage() {
   }, [tenantSchema]);
 
   // 1. Load pending entries
-  const loadPendingEntries = async () => {
+const loadPendingEntries = async () => {
     try {
+      console.log('--- FETCHING PENDING ENTRIES FOR SCHEMA ---:', tenantSchema);
       const res = await fetch(`${API_BASE_URL}/time-entries/pending?tenantSchema=${tenantSchema}`);
       const data = await res.json();
+      console.log('--- PENDING ENTRIES RESPONSE ---:', data); // 👈 این خط را اضافه کنید
+      
       if (res.ok) {
         setPendingEntries(data.entries || []);
       }
@@ -48,7 +51,7 @@ export default function AdminApprovalPage() {
       console.error('Failed to load pending entries:', error);
     }
   };
-
+  
   // 2. Load users list
   const loadUsers = async () => {
     try {

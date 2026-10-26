@@ -12,6 +12,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useProfileStore } from '../state/useProfileStore';
 import { API_BASE_URL } from '../utils/config';
+import { useProjectStore } from '../state/useProjectStore';
 
 interface Project {
   id: string;
@@ -32,6 +33,19 @@ interface Client {
 }
 
 export default function ProjectsPage() {
+  const role = useProfileStore((state) => state.role);
+
+  // 🛡️ اگر کاربر ادمین نبود، اجازه ورود به مدیریت پروژه‌ها را نده
+  if (role !== 'admin') {
+    return (
+      <View style={styles.centerContainer}>
+        <Text style={styles.errorTitle}>Access Denied</Text>
+        <Text style={styles.errorText}>
+          You do not have permission to access project management. Only administrators can manage projects.
+        </Text>
+      </View>
+    );
+  }
   const { tenantSchema } = useProfileStore();
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [clients, setClients] = useState<Client[]>([]);
@@ -49,21 +63,34 @@ export default function ProjectsPage() {
   const [projectDescription, setProjectDescription] = useState('');
 
   const fetchData = async () => {
-    if (!tenantSchema) return;
-    setIsLoading(true);
-    try {
-      const response = await fetch(
-        `${API_BASE_URL}/projects/list?tenantSchema=${tenantSchema}`
-      );
-      if (response.ok) {
-        const data = await response.json();
-        setClients(data.clients || []);
+      if (!tenantSchema) return;
+      setIsLoading(true);
+      try {
+        const response = await fetch(
+          `${API_BASE_URL}/projects/list?tenantSchema=${tenantSchema}`
+        );
+        if (response.ok) {
+          const data = await response.json();
+          const fetchedClients: Client[] = data.clients || [];
+          setClients(fetchedClients);
+
+          // 🌟 استخراج تمام پروژه‌ها از داخل مشتریان و آپدیت کردن استور سراسری
+          const allProjects = fetchedClients.flatMap(client => 
+            client.projects.map(p => ({
+              id: p.id,
+              name: p.name,
+              description: p.description,
+              is_active: p.isActive,
+              clientName: client.name,
+            }))
+          );
+          useProjectStore.getState().setProjects(allProjects);
+        }
+      } catch (e) {
+        console.error('Failed to fetch clients and projects:', e);
       }
-    } catch (e) {
-      console.error('Failed to fetch clients and projects:', e);
-    }
-    setIsLoading(false);
-  };
+      setIsLoading(false);
+    };
 
   useEffect(() => {
     fetchData();
@@ -341,4 +368,22 @@ const styles = StyleSheet.create({
   projectName: { fontSize: 13, fontWeight: '600', color: '#333333' },
   projectTimeBadge: { fontSize: 11, fontWeight: '600', color: '#007AFF', backgroundColor: '#E1F5FE', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
   projectDesc: { fontSize: 11, color: '#8E8E93', paddingLeft: 16, marginTop: 2 },
+centerContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+    backgroundColor: '#fff',
+  },
+  errorTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#ff3b30',
+    marginBottom: 10,
+  },
+  errorText: {
+    fontSize: 16,
+    color: '#666',
+    textAlign: 'center',
+  },
 });
