@@ -1,5 +1,3 @@
-
-
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -13,37 +11,60 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTimeStore } from '../state/useTimeStore';
-import { useProjectStore } from '../state/useProjectStore';
 import { useProfileStore } from '../state/useProfileStore';
 import { useNavigation } from '@react-navigation/native';
+import { API_BASE_URL } from '../utils/config';
 
 export default function TimerPage() {
   const navigation = useNavigation<any>();
   const { activeEntry, activeBreak, startEntry, pauseEntry, resumeEntry, stopActiveEntry } = useTimeStore();
-  const projects = useProjectStore((state) => state.projects);
-  const clientName = useProfileStore((state) => state.clientName);
+  const { clientName, tenantSchema, role, userId } = useProfileStore();
 
-  // پروژه‌های موجود یا پروژه عمومی پیش‌فرض در صورت خالی بودن استور
-  const availableProjects = projects.length > 0 ? projects : [{ id: 'p1', name: 'General Project' }];
-
-  const [selectedProjectId, setSelectedProjectId] = useState<string>(availableProjects[0].id);
+  const [availableProjects, setAvailableProjects] = useState<any[]>([]);
+  const [selectedProjectId, setSelectedProjectId] = useState<string>('');
   const [isPickerOpen, setIsPickerOpen] = useState<boolean>(false);
   const [elapsedSeconds, setElapsedSeconds] = useState<number>(0);
 
-  
-
-  // همگام‌سازی ID پروژه انتخابی هنگام بارگذاری پروژه‌ها از استور
+  // بارگذاری پروژه‌ها بر اساس نقش کاربر
   useEffect(() => {
-    if (availableProjects.length > 0) {
-      const exists = availableProjects.some((p) => p.id === selectedProjectId);
-      if (!exists) {
-        setSelectedProjectId(availableProjects[0].id);
-      }
+    if (tenantSchema) {
+      fetchUserProjects();
     }
-  }, [projects]);
+  }, [tenantSchema, role, userId]);
 
-  // یافتن پروژه انتخاب‌شده
-  const currentProject = availableProjects.find((p) => p.id === selectedProjectId) || availableProjects[0];
+  const fetchUserProjects = async () => {
+    try {
+      let url = `${API_BASE_URL}/projects/list?tenantSchema=${tenantSchema}`;
+      if (role && role !== 'admin' && userId) {
+        url = `${API_BASE_URL}/projects/assigned-list?tenantSchema=${tenantSchema}&userId=${userId}&isAdmin=false`;
+      }
+
+      const res = await fetch(url);
+      const data = await res.json();
+
+      if (res.ok) {
+        let list: any[] = [];
+        if (role === 'admin') {
+          data.clients?.forEach((c: any) => {
+            c.projects?.forEach((p: any) => {
+              list.push({ ...p, clientName: c.name });
+            });
+          });
+        } else {
+          list = Array.isArray(data.projects) ? data.projects : (Array.isArray(data) ? data : []);
+        }
+
+        setAvailableProjects(list);
+        if (list.length > 0) {
+          setSelectedProjectId(list[0].id);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to fetch projects for timer:', error);
+    }
+  };
+
+  const currentProject = availableProjects.find((p) => p.id === selectedProjectId) || availableProjects[0] || { id: '', name: 'No Project Available' };
 
   // تایمر زنده
   useEffect(() => {
@@ -74,8 +95,8 @@ export default function TimerPage() {
   };
 
   const handleStart = () => {
-    if (!currentProject) {
-      Alert.alert('Error', 'Please select a project first.');
+    if (!currentProject.id) {
+      Alert.alert('Error', 'Please select a valid project first.');
       return;
     }
     startEntry(currentProject.id, currentProject.name, clientName || 'Company');
@@ -95,65 +116,22 @@ export default function TimerPage() {
 
   const getArbzgStatus = () => {
     if (totalWorkMinutes >= 600) {
-      return {
-        type: 'danger',
-        message: '⚠️ Maximum daily limit reached (10 Hours - ArbZG §3 Violation)!',
-      };
+      return { type: 'danger', message: '⚠️ Maximum daily limit reached (10 Hours - ArbZG §3 Violation)!' };
     } else if (totalWorkMinutes >= 540) {
-      return {
-        type: 'warning',
-        message: 'ℹ️ Work exceeds 9 hours: Mandatory 45-minute break required.',
-      };
+      return { type: 'warning', message: 'ℹ️ Work exceeds 9 hours: Mandatory 45-minute break required.' };
     } else if (totalWorkMinutes >= 360) {
-      return {
-        type: 'warning',
-        message: 'ℹ️ Work exceeds 6 hours: Mandatory 30-minute break required.',
-      };
+      return { type: 'warning', message: 'ℹ️ Work exceeds 6 hours: Mandatory 30-minute break required.' };
     }
     return null;
   };
 
-  const arbzgNotice = getArbzgStatus();  
+  const arbzgNotice = getArbzgStatus();
 
-  if (!projects || projects.length === 0) {
-    return (
-      <View style={styles.centerContainer}>
-        <Text style={styles.warningTitle}>No Projects Found</Text>
-        <Text style={styles.pwarningText}>
-          Please create a client and a project first before tracking time.
-        </Text>
-        <TouchableOpacity 
-          style={styles.btn} 
-          onPress={() => navigation.navigate('Projects')}
-        >
-          <Text style={styles.btnText}>Go to Projects</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
-  if (!projects || projects.length === 0) {
-      return (
-        <View style={styles.centerContainer}>
-          <Text style={styles.warningTitle}>No Projects Found</Text>
-          <Text style={styles.warningText}>
-            Please create a client and a project first before tracking time.
-          </Text>
-          <TouchableOpacity 
-            style={styles.btn} 
-            // چون نام تب پروژه‌ها 'Projects' است، مستقیم به آن هدایت می‌کنیم
-            onPress={() => navigation.navigate('Projects')}
-          >
-            <Text style={styles.btnText}>Go to Projects</Text>
-          </TouchableOpacity>
-        </View>
-      );
-  }
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <Text style={styles.headerTitle}>{clientName || 'Time Tracker'}</Text>
 
-        {/* Combobox انتخابی پروژه (در صورت غیرفعال بودن تایمر) */}
         {!activeEntry ? (
           <View style={styles.projectSection}>
             <Text style={styles.sectionLabel}>Select Project:</Text>
@@ -172,22 +150,14 @@ export default function TimerPage() {
           </View>
         )}
 
-
         {arbzgNotice && (
-          <View style={[
-            styles.noticeBox, 
-            arbzgNotice.type === 'danger' ? styles.dangerBox : styles.warningBox
-          ]}>
-            <Text style={[
-              styles.noticeText, 
-              arbzgNotice.type === 'danger' ? styles.dangerText : styles.warningText
-            ]}>
+          <View style={[styles.noticeBox, arbzgNotice.type === 'danger' ? styles.dangerBox : styles.warningBox]}>
+            <Text style={[styles.noticeText, arbzgNotice.type === 'danger' ? styles.dangerText : styles.warningText]}>
               {arbzgNotice.message}
             </Text>
           </View>
-        )}        
+        )}
 
-        {/* کارت اصلی تایمر */}
         <View style={styles.card}>
           <Text style={styles.projectLabel}>Active Project</Text>
           <Text style={styles.projectName}>
@@ -225,7 +195,6 @@ export default function TimerPage() {
         </View>
       </ScrollView>
 
-      {/* Modal منوی کشویی Combobox */}
       <Modal visible={isPickerOpen} transparent animationType="fade">
         <TouchableOpacity
           style={styles.modalOverlay}
@@ -239,18 +208,10 @@ export default function TimerPage() {
               keyExtractor={(item) => item.id}
               renderItem={({ item }) => (
                 <TouchableOpacity
-                  style={[
-                    styles.projectOption,
-                    item.id === selectedProjectId && styles.selectedProjectOption,
-                  ]}
+                  style={[styles.projectOption, item.id === selectedProjectId && styles.selectedProjectOption]}
                   onPress={() => handleSelectProject(item.id)}
                 >
-                  <Text
-                    style={[
-                      styles.projectOptionText,
-                      item.id === selectedProjectId && styles.selectedProjectOptionText,
-                    ]}
-                  >
+                  <Text style={[styles.projectOptionText, item.id === selectedProjectId && styles.selectedProjectOptionText]}>
                     {item.name}
                   </Text>
                   {item.id === selectedProjectId && <Text style={styles.checkMark}>✓</Text>}
@@ -348,57 +309,10 @@ const styles = StyleSheet.create({
   projectOptionText: { fontSize: 16, color: '#1C1C1E' },
   selectedProjectOptionText: { color: '#007AFF', fontWeight: 'bold' },
   checkMark: { color: '#007AFF', fontWeight: 'bold' },
-
-  noticeBox: {
-    padding: 14,
-    borderRadius: 12,
-    marginBottom: 16,
-    borderWidth: 1,
-  },
-  warningBox: {
-    backgroundColor: '#FFF8E1',
-    borderColor: '#FFE082',
-  },
-  dangerBox: {
-    backgroundColor: '#FFEBEE',
-    borderColor: '#FFCDD2',
-  },
-  noticeText: {
-    fontSize: 13,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  warningText: {
-    color: '#B78103',
-  },
-  dangerText: {
-    color: '#C62828',
-  },
-
-centerContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-    backgroundColor: '#fff',
-  },
-  warningTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#ff3b30',
-    marginBottom: 10,
-  },
-  btn: {
-    backgroundColor: '#007AFF',
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 8,
-  },
-  pwarningText: {
-      fontSize: 20,
-      color: '#666',
-      textAlign: 'center',
-      marginBottom: 20,
-    },
-  
+  noticeBox: { padding: 14, borderRadius: 12, marginBottom: 16, borderWidth: 1 },
+  warningBox: { backgroundColor: '#FFF8E1', borderColor: '#FFE082' },
+  dangerBox: { backgroundColor: '#FFEBEE', borderColor: '#FFCDD2' },
+  noticeText: { fontSize: 13, fontWeight: '600', textAlign: 'center' },
+  warningText: { color: '#B78103' },
+  dangerText: { color: '#C62828' },
 });

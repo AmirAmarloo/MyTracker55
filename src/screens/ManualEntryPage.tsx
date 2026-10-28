@@ -8,6 +8,7 @@ import {
   TextInput,
   Alert,
   Platform,
+  RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -15,17 +16,16 @@ import { useProfileStore } from '../state/useProfileStore';
 import { API_BASE_URL } from '../utils/config';
 
 export default function ManualEntryPage() {
-  const { tenantSchema } = useProfileStore();
+  const { tenantSchema, role, userId } = useProfileStore();
+  const [refreshing, setRefreshing] = useState(false);
   
   const [projects, setProjects] = useState<any[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState('');
   
-  // متغیرهای زمان شروع و پایان به‌صورت شیء Date
   const [startDate, setStartDate] = useState(new Date());
-  const [endDate, setEndDate] = useState(new Date(Date.now() + 3600000)); // ۱ ساعت بعد به‌صورت پیش‌فرض
+  const [endDate, setEndDate] = useState(new Date(Date.now() + 3600000));
   const [note, setNote] = useState('');
 
-  // وضعیت نمایش انتخابگرها
   const [showPicker, setShowPicker] = useState<{
     target: 'start' | 'end' | null;
     mode: 'date' | 'time';
@@ -35,45 +35,43 @@ export default function ManualEntryPage() {
     if (tenantSchema) {
       loadProjects();
     }
-  }, [tenantSchema]);
+  }, [tenantSchema, role, userId]);
 
   const loadProjects = async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/projects/list?tenantSchema=${tenantSchema}`);
+      let url = `${API_BASE_URL}/projects/list?tenantSchema=${tenantSchema}`;
+      if (role && role !== 'admin' && userId) {
+        url = `${API_BASE_URL}/projects/assigned-list?tenantSchema=${tenantSchema}&userId=${userId}&isAdmin=false`;
+      }
+
+      const res = await fetch(url);
       const data = await res.json();
+
+      console.log("API URL called:", url);
+      console.log("Response status:", res.status);
+      console.log("Response data:", data);
+      
       if (res.ok) {
         let allProjects: any[] = [];
-        data.clients?.forEach((c: any) => {
-          c.projects?.forEach((p: any) => {
-            allProjects.push({ ...p, clientName: c.name });
+        
+        if (role === 'admin') {
+          data.clients?.forEach((c: any) => {
+            c.projects?.forEach((p: any) => {
+              allProjects.push({ ...p, clientName: c.name });
+            });
           });
-        });
+        } else {
+          allProjects = Array.isArray(data.projects) ? data.projects : (Array.isArray(data) ? data : []);
+        }
+        
         setProjects(allProjects);
+        if (allProjects.length > 0 && !selectedProjectId) {
+          setSelectedProjectId(allProjects[0].id);
+        }
       }
     } catch (error) {
       console.error('Failed to load projects:', error);
     }
-  };
-
-  // تغییر تاریخ/زمان انتخاب شده
-  const onChangePicker = (event: any, selectedDate?: Date) => {
-    if (event.type === 'dismissed') {
-      setShowPicker({ target: null, mode: 'date' });
-      return;
-    }
-
-    if (selectedDate) {
-      if (showPicker.target === 'start') {
-        setStartDate(selectedDate);
-      } else if (showPicker.target === 'end') {
-        setEndDate(selectedDate);
-      }
-    }
-
-    // در اندروید پس از انتخاب تاریخ/زمان پیکر بسته می‌شود
-    //if (Platform.OS === 'android') {
-      setShowPicker({ target: null, mode: 'date' });
-    //}
   };
 
   const handleEmployeeSubmit = async () => {
@@ -92,7 +90,7 @@ export default function ManualEntryPage() {
 
     const duration = Math.round((endTime - startTime) / (1000 * 60));
     const selectedProj = projects.find((p) => p.id === selectedProjectId);
-    const currentUserId = 'usr_device_user';
+    const currentUserId = userId || 'usr_device_user';
 
     const payload = {
       tenantSchema,
@@ -104,7 +102,7 @@ export default function ManualEntryPage() {
       endTime,
       duration,
       note: note.trim(),
-      isAdminAction: false, // وضعیت pending ثبت می‌شود
+      isAdminAction: false,
     };
 
     try {
@@ -126,16 +124,32 @@ export default function ManualEntryPage() {
     }
   };
 
+  const onRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await loadProjects(); 
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>✍️ Manual Time Entry</Text>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scroll}>
+      <ScrollView 
+        contentContainerStyle={styles.scroll}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+      >
         <Text style={styles.label}>Select Project:</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipsRow}>
-          {projects.map((p) => (
+          {Array.isArray(projects) && projects.map((p) => (
             <TouchableOpacity
               key={p.id}
               style={[styles.chip, selectedProjectId === p.id && styles.selectedChip]}
@@ -148,7 +162,6 @@ export default function ManualEntryPage() {
           ))}
         </ScrollView>
 
-        {/* بخش انتخاب زمان شروع */}
         <Text style={styles.label}>Start Time:</Text>
         <View style={styles.dateTimeRow}>
           <TouchableOpacity
@@ -166,7 +179,6 @@ export default function ManualEntryPage() {
           </TouchableOpacity>
         </View>
 
-        {/* بخش انتخاب زمان پایان */}
         <Text style={styles.label}>End Time:</Text>
         <View style={styles.dateTimeRow}>
           <TouchableOpacity
@@ -184,14 +196,26 @@ export default function ManualEntryPage() {
           </TouchableOpacity>
         </View>
 
-        {/* نمایش DatePicker هنگام کلیک */}
         {showPicker.target !== null && (
           <DateTimePicker
             value={showPicker.target === 'start' ? startDate : endDate}
             mode={showPicker.mode}
             is24Hour={true}
             display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-            onChange={onChangePicker}
+            onChange={(event, date) => {
+              if (event.type === 'dismissed') {
+                setShowPicker({ target: null, mode: 'date' });
+                return;
+              }
+              if (date) {
+                if (showPicker.target === 'start') {
+                  setStartDate(date);
+                } else if (showPicker.target === 'end') {
+                  setEndDate(date);
+                }
+              }
+              setShowPicker({ target: null, mode: 'date' });
+            }}
           />
         )}
 

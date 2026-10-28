@@ -5,6 +5,7 @@ import { useProfileStore } from '../state/useProfileStore';
 import { useProjectStore } from '../state/useProjectStore';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { API_BASE_URL } from '../utils/config';
 
 const { width } = Dimensions.get('window');
 const SCAN_BOX_SIZE = width * 0.7;
@@ -41,15 +42,24 @@ export default function ActivationScanScreen() {
     );
   }
 
-  const handleBarcodeScanned = async ({ data }: { data: string }) => {
+const handleBarCodeScanned = async (scanResult: any) => {
     if (scannedRef.current) return;
     scannedRef.current = true;
     setScanned(true);
 
-    console.log('--- SCANNED RAW DATA ---:', data);
+    console.log('--- SCANNED RAW DATA ---:', scanResult);
 
     try {
-      let rawData = data.trim();
+      const dataString = typeof scanResult === 'string' 
+        ? scanResult 
+        : (scanResult?.data || '');
+
+      let rawData = dataString.trim();
+      if (!rawData) {
+        console.log('Empty scan result');
+        return;
+      }
+
       let extractedToken = rawData;
 
       if (rawData.startsWith('{')) {
@@ -65,7 +75,7 @@ export default function ActivationScanScreen() {
 
       console.log('--- EXTRACTED TOKEN SENT TO FASTAPI ---:', extractedToken);
 
-      const response = await fetch('http://172.20.10.12:8000/auth/activate', {
+      const response = await fetch(`${API_BASE_URL}/auth/activate`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -76,6 +86,7 @@ export default function ActivationScanScreen() {
 
       console.log('--- HTTP STATUS CODE ---:', response.status);
 
+      // 🌟 فقط یک‌بار پاسخ را می‌خوانیم تا خطای Body is already used رخ ندهد
       const responseData = await response.json();
       console.log('--- FASTAPI RESPONSE DATA ---:', responseData);
 
@@ -86,11 +97,13 @@ export default function ActivationScanScreen() {
         throw new Error(errorMessage);
       }
 
+      // 🌟 ذخیره اطلاعات کلیدی پروفایل (شامل userId و role) در استور
       setActivationProfile({
         clientName: responseData.clientName,
         tenantSchema: responseData.tenantSchema,
         authToken: responseData.authToken,
-        role: responseData.role || 'admin',
+        userId: responseData.userId,
+        role: responseData.role,
       });
 
       const loadedProjects = responseData.projects || [];
@@ -98,29 +111,8 @@ export default function ActivationScanScreen() {
 
       console.log('--- LOADED PROJECTS COUNT ---:', loadedProjects.length);
 
-      if (loadedProjects.length === 0) {
-        Alert.alert(
-          'Fresh Start',
-          'No projects found. Please create your first client and project.',
-          [
-            {
-              text: 'OK',
-              onPress: () => {
-                //navigation.navigate('ProjectsPage');
-              },
-            },
-          ]
-        );
-      } else {
-        Alert.alert('Success', 'Profile activated successfully!', [
-          /*{
-            text: 'OK',
-            onPress: () => {
-              navigation.navigate('MainTabs');
-            },
-          },*/
-        ]);
-      }
+      Alert.alert('Success', 'Profile activated successfully!');
+
     } catch (error: any) {
       console.log('--- ACTIVATION CATCH ERROR ---:', error);
       Alert.alert('Activation Error', error.message || 'Activation failed', [
@@ -134,7 +126,7 @@ export default function ActivationScanScreen() {
       ]);
     }
   };
-
+  
   return (
     <View style={styles.container}>
       <CameraView
@@ -143,7 +135,7 @@ export default function ActivationScanScreen() {
         barcodeScannerSettings={{
           barcodeTypes: ['qr'],
         }}
-        onBarcodeScanned={scanned ? undefined : handleBarcodeScanned}
+        onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
       />
 
       <View style={styles.overlay} pointerEvents="box-none">
