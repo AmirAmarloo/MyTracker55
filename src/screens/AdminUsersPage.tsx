@@ -19,11 +19,17 @@ export default function AdminUsersPage() {
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // Modal states for adding user
+  // استیت‌های مودال و فرم ثبت‌نام/تولید توکن
   const [modalVisible, setModalVisible] = useState(false);
   const [fullName, setFullName] = useState('');
-  const [email, setEmail] = useState('');
-  const [role, setRole] = useState<'employee' | 'admin'>('employee');
+  const [role, setRole] = useState<'admin' | 'employee'>('employee'); 
+
+  // استیت‌های مودال نمایش توکن خروجی به ادمین
+  const [tokenModalVisible, setTokenModalVisible] = useState(false);
+  const [generatedToken, setGeneratedToken] = useState('');
+
+  // استخراج پویا‌ی companyId از tenantSchema موجود در استور
+  const companyId = tenantSchema ? tenantSchema.replace('tenant_', '').replace(/_/g, '-') : '';
 
   useEffect(() => {
     if (tenantSchema) {
@@ -46,34 +52,40 @@ export default function AdminUsersPage() {
     }
   };
 
-  const handleAddUser = async () => {
-    if (!fullName.trim() || !email.trim()) {
-      Alert.alert('Error', 'Please enter full name and email.');
+  const handleGenerateToken = async () => {
+    if (!fullName.trim()) {
+      Alert.alert('Error', 'Please enter full name.');
+      return;
+    }
+
+    if (!companyId) {
+      Alert.alert('Error', 'Company ID could not be determined from tenant schema.');
       return;
     }
 
     try {
-      const res = await fetch(`${API_BASE_URL}/users/create`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          tenantSchema,
-          fullName: fullName.trim(),
-          email: email.trim().toLowerCase(),
-          role,
-        }),
-      });
+      const res = await fetch(
+        //`${API_BASE_URL}/admin/create-employee-token?company_id=${companyId}&employee_name=${encodeURIComponent(fullName.trim())}`,
+        `${API_BASE_URL}/admin/create-employee-token?company_id=${companyId}&employee_name=${encodeURIComponent(fullName.trim())}&role=${role}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        }
+      );
 
+      const data = await res.json();
       if (res.ok) {
-        Alert.alert('Success', 'User added successfully.');
         setModalVisible(false);
         setFullName('');
-        setEmail('');
         setRole('employee');
+        
+        // نمایش توکن تولیدشده به ادمین
+        setGeneratedToken(data.token);
+        setTokenModalVisible(true);
+        
         loadUsers();
       } else {
-        const errData = await res.json();
-        Alert.alert('Error', errData.detail || 'Failed to create user.');
+        Alert.alert('Error', data.detail || 'Failed to create employee token.');
       }
     } catch (error: any) {
       Alert.alert('Error', error.message || 'Server connection error.');
@@ -85,7 +97,7 @@ export default function AdminUsersPage() {
       <View style={styles.header}>
         <Text style={styles.title}>👥 User & Role Management</Text>
         <TouchableOpacity style={styles.addBtn} onPress={() => setModalVisible(true)}>
-          <Text style={styles.addBtnText}>+ Add User</Text>
+          <Text style={styles.addBtnText}>+ Add Employee</Text>
         </TouchableOpacity>
       </View>
 
@@ -113,18 +125,18 @@ export default function AdminUsersPage() {
                     {u.role.toUpperCase()}
                   </Text>
                 </View>
-                <Text style={styles.userEmail}>✉️ {u.email}</Text>
+                <Text style={styles.userEmail}>✉️ {u.email || 'Registered via Token'}</Text>
               </View>
             ))
           )}
         </ScrollView>
       )}
 
-      {/* Modal for adding new user */}
+      {/* Modal for entering employee full name and role */}
       <Modal visible={modalVisible} animationType="slide" transparent={true}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Add New User</Text>
+            <Text style={styles.modalTitle}>Generate Employee Token</Text>
 
             <Text style={styles.label}>Full Name:</Text>
             <TextInput
@@ -132,16 +144,6 @@ export default function AdminUsersPage() {
               placeholder="e.g. John Doe"
               value={fullName}
               onChangeText={setFullName}
-            />
-
-            <Text style={styles.label}>Email Address:</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="e.g. john@company.de"
-              autoCapitalize="none"
-              keyboardType="email-address"
-              value={email}
-              onChangeText={setEmail}
             />
 
             <Text style={styles.label}>Role:</Text>
@@ -164,7 +166,6 @@ export default function AdminUsersPage() {
                 </Text>
               </TouchableOpacity>
             </View>
-
             <View style={styles.modalBtnRow}>
               <TouchableOpacity
                 style={[styles.modalBtn, { backgroundColor: '#8E8E93' }]}
@@ -175,11 +176,41 @@ export default function AdminUsersPage() {
 
               <TouchableOpacity
                 style={[styles.modalBtn, { backgroundColor: '#34C759' }]}
-                onPress={handleAddUser}
+                onPress={handleGenerateToken}
               >
-                <Text style={styles.btnText}>Save User</Text>
+                <Text style={styles.btnText}>Generate Token</Text>
               </TouchableOpacity>
             </View>
+
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal to show generated token to admin */}
+      <Modal visible={tokenModalVisible} animationType="fade" transparent={true}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>🎉 Token Generated Successfully</Text>
+            <Text style={styles.label}>Give this activation token to the employee:</Text>
+            
+            <View style={[styles.input, { backgroundColor: '#E5E5EA', justifyContent: 'center', marginVertical: 10, paddingVertical: 12 }]}>
+              <Text style={{ fontWeight: 'bold', color: '#007AFF', textAlign: 'center', fontSize: 16 }}>
+                {generatedToken || '---'}
+              </Text>
+            </View>
+
+            <TouchableOpacity
+              style={{ 
+                backgroundColor: '#007AFF', 
+                marginTop: 15, 
+                padding: 12, 
+                borderRadius: 8, 
+                alignItems: 'center' 
+              }}
+              onPress={() => setTokenModalVisible(false)}
+            >
+              <Text style={styles.btnText}>Done</Text>
+            </TouchableOpacity>          
           </View>
         </View>
       </Modal>

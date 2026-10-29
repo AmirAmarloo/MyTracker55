@@ -12,6 +12,7 @@ interface ProfileState {
   role: UserRole;
   profileStatus: 'inactive' | 'active';
   setActivationProfile: (data: { clientName: string; tenantSchema: string; authToken: string; userId: string; role?: UserRole; }) => void;
+  setTenantSchema: (schema: string, userId: string, role: UserRole) => void;
   clearProfile: () => void;
 }
 
@@ -33,6 +34,13 @@ export const useProfileStore = create<ProfileState>()(
           role: data.role || 'employee',
           profileStatus: 'active',
         }),
+      setTenantSchema: (schema, userId, role) =>
+              set({
+                tenantSchema: schema,
+                userId: userId,
+                role: role,
+                profileStatus: 'active',
+              }),        
       clearProfile: () =>
         set({ 
           clientName: null, 
